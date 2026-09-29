@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateA
 import { useQueryClient } from "@tanstack/react-query";
 import { App } from "antd";
 
-import { applyRecoveredGenerationTaskResultToNodes, generationTaskCanReloadResource, generationTaskNodeId } from "@/lib/canvas/canvas-generation-task-sync";
+import { applyRecoveredGenerationTaskResultToNodes, generationTaskCanReloadResource, generationTaskNodeId, syncGenerationTaskToCanvasStore } from "@/lib/canvas/canvas-generation-task-sync";
 import { applyCanvasGenerationTaskNodeEffect, isCanvasGenerationDurableAckError, persistCanvasGenerationEffect } from "@/services/canvas-generation-consumer";
 import { consumeGenerationTaskNode, ensureCanvasNodeAsset, retryCanvasAssetSyncAfterRateLimit } from "@/services/project-asset-sync";
 import { listGenerationTasks, queryGenerationTask, subscribeGenerationTasks, type GenerationTask } from "@/services/api/task-center";
@@ -17,6 +17,7 @@ import { generationFailureMetadata } from "@/lib/generation-error";
 import { canvasTaskFailureMetadata } from "./canvas-generation-failure";
 import { runGenerationConsumer } from "@/services/generation-consumer-lifecycle";
 import { consumeCanvasGenerationContinuation } from "./use-canvas-operation-history";
+import { syncLocalCanvasProjectToBackend } from "@/services/local-workspace-repository";
 
 type CanvasGenerationRequest = {
     targetNodeId: string;
@@ -419,6 +420,30 @@ export function useCanvasGeneration({ projectId, domainProjectId, projectLoaded,
                             signal,
                             isCurrentProject,
                         });
+                        const recoveredNode = nodesRef.current.find((item) => item.id === node.id);
+                        if (
+                            localMode &&
+                            completed.status === "succeeded" &&
+                            completed.type === "canvas_text" &&
+                            recoveredNode &&
+                            (recoveredNode.metadata?.status !== NODE_STATUS_SUCCESS || !recoveredNode.metadata?.content?.trim())
+                        ) {
+                            await syncGenerationTaskToCanvasStore(completed);
+                            if (!isCurrentProject()) return;
+                            const recoveredProject = useCanvasStore.getState().projects.find((item) => item.id === startedProjectId);
+                            const restoredNode = recoveredProject?.nodes.find((item) => item.id === node.id);
+                            if (!recoveredProject || !restoredNode?.metadata?.content?.trim() || restoredNode.metadata.status !== NODE_STATUS_SUCCESS) {
+                                throw new Error("任务已完成，但文本结果仍未写回画布");
+                            }
+                            nodesRef.current = recoveredProject.nodes;
+                            setNodes(recoveredProject.nodes);
+                            try {
+                                await syncLocalCanvasProjectToBackend(startedProjectId);
+                            } catch (error) {
+                                console.warn("文本结果已恢复到画布，但同步到桌面数据库失败", { taskId, error });
+                                message.warning("文本结果已恢复到画布，但暂时无法同步到桌面数据库；请先勿关闭应用");
+                            }
+                        }
                     } catch (error) {
                         if (!isCurrentProject() || (error instanceof Error && error.name === "AbortError")) return;
                         const currentMetadata = nodesRef.current.find((item) => item.id === node.id)?.metadata || node.metadata;
@@ -485,7 +510,7 @@ export function useCanvasGeneration({ projectId, domainProjectId, projectLoaded,
                     : current,
             );
         },
-        [applyGenerationTaskResult, bindGenerationTask, localMode, nodesRef, observeSubscribedGenerationTask, setNodes],
+        [applyGenerationTaskResult, bindGenerationTask, localMode, message, nodesRef, observeSubscribedGenerationTask, setNodes],
     );
 
     useEffect(() => {
