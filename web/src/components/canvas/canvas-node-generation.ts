@@ -88,17 +88,16 @@ export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData
     const hasExplicitResourceMention = hasResolvableGenerationMention(prompt, mentionInputs);
     const isWorkflowSource = sourceNode?.type === CanvasNodeType.Config && isCanvasWorkflowProvider(sourceNode.metadata);
     const hasConnectedMedia = connectedInputs.some((input) => input.type === "image" || input.type === "video" || input.type === "audio" || input.type === "character");
-    if ((promptOnly && hasConnectedMedia) || (Boolean(sourceNode?.metadata?.composerContent?.trim()) && (sourceNode?.type === CanvasNodeType.Config || isWorkflowSource)) || hasExplicitResourceMention) {
+    const hasConnectedText = connectedInputs.some((input) => input.type === "text" && Boolean(input.text?.trim()));
+    if ((promptOnly && (hasConnectedMedia || hasConnectedText)) || (Boolean(sourceNode?.metadata?.composerContent?.trim()) && (sourceNode?.type === CanvasNodeType.Config || isWorkflowSource)) || hasExplicitResourceMention) {
         const autoIncludeWorkflowMedia = isWorkflowSource;
         return buildComposerGenerationContext(
             mentionInputs,
             prompt,
             // 工作流节点由字段映射接收全部连线媒体；视频节点的历史首尾帧字段不能再额外追加参考图。
             autoIncludeWorkflowMedia || (promptOnly && hasConnectedMedia) ? [] : [sourceNode?.metadata?.videoStartFrameNodeId, sourceNode?.metadata?.videoEndFrameNodeId].filter((id): id is string => Boolean(id)),
-            promptOnly,
             autoIncludeWorkflowMedia || (promptOnly && hasConnectedMedia),
             connectedInputs,
-            !promptOnly,
         );
     }
 
@@ -185,10 +184,8 @@ function buildComposerGenerationContext(
     inputs: NodeGenerationInput[],
     prompt: string,
     videoFrameNodeIds: string[] = [],
-    promptOnly = false,
     autoIncludeWorkflowMedia = false,
     connectedInputs: NodeGenerationInput[] = [],
-    autoIncludeConnectedText = false,
 ): NodeGenerationContext {
     const normalizedPrompt = normalizeGenerationNodeMentionTokens(prompt, inputs);
     const slotInputByToken = new Map(generationSlotEntries(inputs).map(({ token, input }) => [token, input]));
@@ -235,16 +232,14 @@ function buildComposerGenerationContext(
     }
 
     nextPrompt += normalizedPrompt.slice(lastIndex);
-    if (autoIncludeConnectedText) {
-        connectedInputs.forEach((input) => {
-            const text = input.type === "text" ? input.text : "";
-            if (!text?.trim() || includedTextNodeIds.has(input.nodeId)) return;
-            textBlocks.push(`【文本节点：${input.title?.trim() || "未命名"}】\n${text}`);
-            includedTextNodeIds.add(input.nodeId);
-            counts.text += 1;
-        });
-    }
-    // 显式 @文本 引用是用户写进输入框的内容，必须内联真实文本；promptOnly 只拦自动上游文本。
+    connectedInputs.forEach((input) => {
+        const text = input.type === "text" ? input.text : "";
+        if (!text?.trim() || includedTextNodeIds.has(input.nodeId)) return;
+        textBlocks.push(`【文本节点：${input.title?.trim() || "未命名"}】\n${text}`);
+        includedTextNodeIds.add(input.nodeId);
+        counts.text += 1;
+    });
+    // 显式 @文本 引用和未显式点名的连线文本都进入提示词；按节点 ID 去重，避免重复提交。
     if (textBlocks.length) nextPrompt = `${nextPrompt.trim()}\n\n${textBlocks.join("\n\n")}`;
     if (autoIncludeWorkflowMedia) {
         // RunningHub/ComfyUI 工作流按保存的字段槽位接收图片、视频和音频；
@@ -253,7 +248,7 @@ function buildComposerGenerationContext(
         // 素材库中的显式 @ 引用仍保留在后面，不会被自动模式吞掉。
         const explicitInputs = selectedInputs.splice(0);
         const selectedNodeIds = new Set<string>();
-        workflowMediaInputs.forEach((input) => {
+        connectedInputs.forEach((input) => {
             if (input.type === "text" || selectedNodeIds.has(input.nodeId)) return;
             selectedInputs.push(input);
             selectedNodeIds.add(input.nodeId);

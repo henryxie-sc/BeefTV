@@ -151,7 +151,7 @@ export function useCanvasGenerationExecutor({
                     // AutoDL/其他声明式视频协议需要结构化参考素材；只有普通
                     // 模型视频接口才把提示词视为纯文本输入。
                     const usesWorkflowProvider = Boolean(mode !== "text" && generationConfig.taskWorkflowProvider && generationConfig.taskWorkflowProvider !== "model");
-                    // 普通视频协议只保留输入框文本（显式 @文本 引用仍会展开为真实内容）；声明式工作流还会带上连接媒体和文本节点。
+                    // 视频生成会把连线文本正文并入提示词；普通模型与声明式工作流仍按各自协议整理图片等媒体。
                     const promptOnly = mode === "video" && !usesWorkflowProvider;
                     try {
                         const baseContext = buildNodeGenerationContext(
