@@ -714,9 +714,8 @@ func cloneStringAnyMap(value map[string]interface{}) map[string]interface{} {
 }
 
 func runTextTask(ctx context.Context, input canvasGenerationInput) (map[string]interface{}, error) {
-	if _, ok := declarativeProtocolAdapterForContext(ctx, input.Config.InterfaceType); ok {
-		return runDeclarativeProtocolTask(ctx, input)
-	}
+	// Standard text protocols use the host's streaming-aware request path even
+	// when their declarative provider package is installed for catalog/agent use.
 	switch input.Config.InterfaceType {
 	case "chat-completion":
 		return runChatCompletionsTextTask(ctx, input)
@@ -724,6 +723,9 @@ func runTextTask(ctx context.Context, input canvasGenerationInput) (map[string]i
 		return runResponsesTextTask(ctx, input)
 	case string(model.ChannelInterfaceClaudeAPI):
 		return runClaudeTextTask(ctx, input)
+	}
+	if _, ok := declarativeProtocolAdapterForContext(ctx, input.Config.InterfaceType); ok {
+		return runDeclarativeProtocolTask(ctx, input)
 	}
 	return runLegacyTextTask(ctx, input)
 }
