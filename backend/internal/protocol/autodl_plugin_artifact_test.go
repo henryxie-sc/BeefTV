@@ -37,8 +37,8 @@ func TestAutoDLPluginArtifact(t *testing.T) {
 	if adapter.Metadata().ID != "autodl-comfyui" || adapter.Metadata().Execution != "declarative" {
 		t.Fatalf("metadata = %#v", adapter.Metadata())
 	}
-	if !adapter.Metadata().RequiresPublicMediaURLs {
-		t.Fatal("AutoDL provider must request public reference media URLs")
+	if adapter.Metadata().RequiresPublicMediaURLs {
+		t.Fatal("AutoDL video provider must accept inline reference media")
 	}
 
 	create, err := adapter.BuildCreate(context.Background(), RequestContext{BaseURL: "https://autodl.art", Request: GenerationRequest{

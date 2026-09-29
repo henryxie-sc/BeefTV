@@ -25,7 +25,7 @@
 | `resolution` | string | `resolution` | 转小写后发送。 |
 | `images[role=first_frame]` | media | `first_frame` | 首帧工作流优先按 role 选择；旧无 role 请求才按 order 回退。 |
 | `images[role=last_frame]` | media | `last_frame` | 尾帧工作流优先按 role 选择；旧无 role 请求才按 order 回退。 |
-| 普通参考图 | media[] | `ref_image_0` … `ref_image_8` | 过滤 `reference_image/subject_reference/style_reference/edit_source` 后按 order 编号。 |
+| 普通参考图 | media[] | `ref_image_0` … `ref_image_8` | 过滤 `reference_image/subject_reference/style_reference/edit_source` 后按 order 编号。AutoDL 字段接受 URL 或 Base64 文件；BeefTV 对本地图片发送 `data:image/...;base64,...`，无需公网素材地址。 |
 | `audios` / 参考音频 | media[] | `ref_audio_0` … `ref_audio_2` | 按 order 编号；仅音频相关 H3 工作流发送。 |
 
 ## 工作流分支
@@ -102,7 +102,7 @@
           "creation"
         ],
         "baseUrl": "https://autodl.art",
-        "requiresPublicMediaUrls": true,
+        "requiresPublicMediaUrls": false,
         "auth": {
           "type": "header",
           "field": "apiKey",
