@@ -40,6 +40,15 @@ func TestAutoDLPluginArtifact(t *testing.T) {
 	if adapter.Metadata().RequiresPublicMediaURLs {
 		t.Fatal("AutoDL video provider must accept inline reference media")
 	}
+	createZM, err := adapter.BuildCreate(context.Background(), RequestContext{BaseURL: "https://autodl.art", Request: GenerationRequest{
+		Capability: CapabilityVideo, Model: "minimax_h3_zm_u24", Prompt: "a cinematic test", Duration: 5, Resolution: "480p", AspectRatio: "9:16",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := createZM.Body.(map[string]any)["resolution"]; got != "480p竖" {
+		t.Fatalf("ZM resolution = %#v, want 480p竖", got)
+	}
 
 	create, err := adapter.BuildCreate(context.Background(), RequestContext{BaseURL: "https://autodl.art", Request: GenerationRequest{
 		Model: "minimax_h3_lightx2v_no_pic", Prompt: "a cinematic test", Duration: 3, Resolution: "768P竖", Images: []MediaReference{{URL: "https://cdn.example/reference.png"}},

@@ -22,7 +22,7 @@
 | `model` | string | URL `{workflow_id}` | 必须是清单中工作流 ID。 |
 | `prompt` | string | `prompt` | `minimax_h3_image_audio_to_video` 工作流不发送。 |
 | `duration` | integer | `duration` / `audio_duration` | 单图音频同步工作流使用 `audio_duration`。 |
-| `resolution` | string | `resolution` | 转小写后发送。 |
+| `resolution` | string | `resolution` | 保留工作流声明的枚举；若画布只传分辨率档位，则按画幅匹配工作流选项，例如 `480p` + `9:16` 转为 `480p竖`。 |
 | `images[role=first_frame]` | media | `first_frame` | 首帧工作流优先按 role 选择；旧无 role 请求才按 order 回退。 |
 | `images[role=last_frame]` | media | `last_frame` | 尾帧工作流优先按 role 选择；旧无 role 请求才按 order 回退。 |
 | 普通参考图 | media[] | `ref_image_0` … `ref_image_8` | 过滤 `reference_image/subject_reference/style_reference/edit_source` 后按 order 编号。AutoDL 字段接受 URL 或 Base64 文件；BeefTV 对本地图片发送 `data:image/...;base64,...`，无需公网素材地址。 |
