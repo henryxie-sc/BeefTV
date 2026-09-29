@@ -98,6 +98,7 @@ export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData
             promptOnly,
             autoIncludeWorkflowMedia || (promptOnly && hasConnectedMedia),
             connectedInputs,
+            !promptOnly,
         );
     }
 
@@ -186,7 +187,8 @@ function buildComposerGenerationContext(
     videoFrameNodeIds: string[] = [],
     promptOnly = false,
     autoIncludeWorkflowMedia = false,
-    workflowMediaInputs: NodeGenerationInput[] = [],
+    connectedInputs: NodeGenerationInput[] = [],
+    autoIncludeConnectedText = false,
 ): NodeGenerationContext {
     const normalizedPrompt = normalizeGenerationNodeMentionTokens(prompt, inputs);
     const slotInputByToken = new Map(generationSlotEntries(inputs).map(({ token, input }) => [token, input]));
@@ -195,6 +197,7 @@ function buildComposerGenerationContext(
     const selectedInputs: NodeGenerationInput[] = [];
     const labelByNodeId = new Map<string, string>();
     const textBlocks: string[] = [];
+    const includedTextNodeIds = new Set<string>();
     const counts = { image: 0, drawing: 0, video: 0, audio: 0, text: 0, character: 0 };
     let hasToken = false;
     let lastIndex = 0;
@@ -203,7 +206,7 @@ function buildComposerGenerationContext(
     if (autoIncludeWorkflowMedia) {
         // 先固定“图片1/视频1”等提示词标签的顺序，和工作流槽位保持一致；
         // 用户先 @ 第二张图时，提示词也不会把它误标成第一张。
-        workflowMediaInputs.forEach((input) => {
+        connectedInputs.forEach((input) => {
             if (input.type === "text" || labelByNodeId.has(input.nodeId)) return;
             const labelKind = input.sourceKind === "drawing" ? "drawing" : input.type;
             labelByNodeId.set(input.nodeId, generationLabel(labelKind, counts[labelKind]++));
@@ -221,8 +224,10 @@ function buildComposerGenerationContext(
                 const labelKind = input.sourceKind === "drawing" ? "drawing" : input.type;
                 label = generationLabel(labelKind, counts[labelKind]++);
                 labelByNodeId.set(input.nodeId, label);
-                if (input.type === "text") textBlocks.push(`【${label}】\n${input.text || ""}`);
-                else selectedInputs.push(input);
+                if (input.type === "text") {
+                    textBlocks.push(`【${label}】\n${input.text || ""}`);
+                    includedTextNodeIds.add(input.nodeId);
+                } else selectedInputs.push(input);
             }
             nextPrompt += input.type === "text" ? `【${label}】` : `@${label}`;
         } else nextPrompt += match[0];
@@ -230,6 +235,15 @@ function buildComposerGenerationContext(
     }
 
     nextPrompt += normalizedPrompt.slice(lastIndex);
+    if (autoIncludeConnectedText) {
+        connectedInputs.forEach((input) => {
+            const text = input.type === "text" ? input.text : "";
+            if (!text?.trim() || includedTextNodeIds.has(input.nodeId)) return;
+            textBlocks.push(`【文本节点：${input.title?.trim() || "未命名"}】\n${text}`);
+            includedTextNodeIds.add(input.nodeId);
+            counts.text += 1;
+        });
+    }
     // 显式 @文本 引用是用户写进输入框的内容，必须内联真实文本；promptOnly 只拦自动上游文本。
     if (textBlocks.length) nextPrompt = `${nextPrompt.trim()}\n\n${textBlocks.join("\n\n")}`;
     if (autoIncludeWorkflowMedia) {
