@@ -26,12 +26,15 @@ type PluginProviderCatalogItem = {
 };
 
 export async function fetchPluginProviderCatalog(scope: string, capability?: ProtocolCapability) {
-    if (workspaceCapabilities().local && scope === "user.custom-channel") {
-        return BUILTIN_OPENAI_PROTOCOLS.filter((item) => !capability || item.capability === capability);
-    }
+    const includeLocalOpenAIProtocols = workspaceCapabilities().local && scope === "user.custom-channel";
     try {
         const result = await http.get<{ providers: PluginProviderCatalogItem[] }>("/plugins/catalog", { params: { scope, capability } });
-        return result.providers.filter((item) => item.enabled && !item.unavailableReason).map(toProviderDefinition);
+        const pluginProtocols = result.providers.filter((item) => item.enabled && !item.unavailableReason).map(toProviderDefinition);
+        if (!includeLocalOpenAIProtocols) return pluginProtocols;
+
+        const openAIProtocols = BUILTIN_OPENAI_PROTOCOLS.filter((item) => !capability || item.capability === capability);
+        const openAIProtocolIds = new Set(BUILTIN_OPENAI_PROTOCOLS.map((item) => item.value));
+        return [...openAIProtocols, ...pluginProtocols.filter((item) => !openAIProtocolIds.has(item.value))];
     } catch (error) {
         // The local desktop profile can run without the optional plugin center.
         // Keep the built-in OpenAI-compatible protocols available so a custom
