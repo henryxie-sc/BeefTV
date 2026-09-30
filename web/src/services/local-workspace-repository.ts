@@ -288,17 +288,26 @@ export async function openLocalCanvasProjectFromBackend(id: string) {
     }
 }
 
-export async function refreshLocalCanvasProjectIfChanged(id: string) {
-    const current = openLocalCanvasProject(id);
+export async function refreshLocalCanvasProjectIfChanged(id: string, canReplace?: (current: CanvasProject | undefined) => boolean) {
     try {
         const response = await http.get<{ project: CanvasProject }>(`/canvas-projects/${encodeURIComponent(id)}`);
         const remote = response.project;
-        if (!remote || selectPreferredCanvasProject(current, remote) !== remote) return false;
-        useCanvasStore.setState((state) => ({
-            projects: state.projects.some((item) => item.id === id)
-                ? state.projects.map((item) => item.id === id ? remote : item)
-                : [...state.projects, remote],
-        }));
+        if (!remote) return false;
+        let replaced = false;
+        useCanvasStore.setState((state) => {
+            const current = state.projects.find((item) => item.id === id);
+            // Recheck after the request: the canvas may have changed while the
+            // backend snapshot was in flight. Never apply that stale response
+            // over edits that have not reached the project store yet.
+            if (selectPreferredCanvasProject(current, remote) !== remote || (canReplace && !canReplace(current))) return state;
+            replaced = true;
+            return {
+                projects: current
+                    ? state.projects.map((item) => item.id === id ? remote : item)
+                    : [...state.projects, remote],
+            };
+        });
+        if (!replaced) return false;
         await flushCanvasStorePersistence();
         return remote;
     } catch {
