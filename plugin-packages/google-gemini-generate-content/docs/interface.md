@@ -41,7 +41,7 @@
 | `create.method` | `"POST"` |
 | `create.path` | `"/v1beta/models/{{model}}:generateContent"` |
 | `create.contentType` | `"application/json"` |
-| `create.body.contents` | `{"$map":{"from":{"$filter":{"from":{"$ref":"request.messages"},"as":"message","where":{"$ne":[{"$ref":"message.role"},"system"]}}},"as":"message","in":{"role":{"$if":{"condition":{"$eq":[{"$ref":"message.role"},"assistant"]},"then":"model","else":"user"}},"parts":[{"text":{"$ref":"message.content"}}]}}}` |
+| `create.body.contents` | `{"$map":{"from":{"$filter":{"from":{"$ref":"request.messages"},"as":"message","where":{"$ne":[{"$ref":"message.role"},"system"]}}},"as":"message","in":{"role":{"$if":{"condition":{"$eq":[{"$ref":"message.role"},"assistant"]},"then":"model","else":"user"}},"parts":{"$coalesce":[{"$map":{"from":{"$ref":"message.content"},"as":"part","in":{"$if":{"condition":{"$eq":[{"$ref":"part.type"},"text"]},"then":{"text":{"$ref":"part.text"}},"else":{"$if":{"condition":{"$eq":[{"$ref":"part.type"},"video_url"]},"then":{"$if":{"condition":{"$eq":[{"$lower":{"$first":{"$split":[{"$ref":"part.video_url.url"},":"]}}},"data"]},"then":{"inlineData":{"mimeType":{"$dataMime":{"$ref":"part.video_url.url"}},"data":{"$dataPayload":{"$ref":"part.video_url.url"}}}},"else":{"fileData":{"fileUri":{"$ref":"part.video_url.url"}}}}},"else":null}}}}}},[{"text":{"$ref":"message.content"}}]]}}}}` |
 | `create.body.systemInstruction` | `{"$if":{"condition":{"$ref":"request.instructions"},"then":{"parts":[{"text":{"$ref":"request.instructions"}}]},"else":null}}` |
 | `create.body.generationConfig` | `{"$omitEmpty":{"$ref":"request.providerOptions.gemini-generate-content.generationConfig"}}` |
 | `create.body.safetySettings` | `{"$omitEmpty":{"$ref":"request.providerOptions.gemini-generate-content.safetySettings"}}` |
@@ -86,7 +86,7 @@
 
 ## 兼容边界
 
-该包只代表上述线协议 profile；同一品牌的其他 endpoint、云区域或网关包装必须使用独立插件，不能根据模型名猜测。
+支持通过 Gemini 原生 fileData.fileUri 输入公开 YouTube 视频链接；私有视频、非公开视频和任意普通媒体 URL 不属于此视频输入方式。
 
 <!-- BEEFTV_PLUGIN_MANIFEST_START -->
 ## Manifest 完整接口定义
@@ -248,13 +248,97 @@
                       "else": "user"
                     }
                   },
-                  "parts": [
-                    {
-                      "text": {
-                        "$ref": "message.content"
-                      }
-                    }
-                  ]
+                  "parts": {
+                    "$coalesce": [
+                      {
+                        "$map": {
+                          "from": {
+                            "$ref": "message.content"
+                          },
+                          "as": "part",
+                          "in": {
+                            "$if": {
+                              "condition": {
+                                "$eq": [
+                                  {
+                                    "$ref": "part.type"
+                                  },
+                                  "text"
+                                ]
+                              },
+                              "then": {
+                                "text": {
+                                  "$ref": "part.text"
+                                }
+                              },
+                              "else": {
+                                "$if": {
+                                  "condition": {
+                                    "$eq": [
+                                      {
+                                        "$ref": "part.type"
+                                      },
+                                      "video_url"
+                                    ]
+                                  },
+                                  "then": {
+                                    "$if": {
+                                      "condition": {
+                                        "$eq": [
+                                          {
+                                            "$lower": {
+                                              "$first": {
+                                                "$split": [
+                                                  {
+                                                    "$ref": "part.video_url.url"
+                                                  },
+                                                  ":"
+                                                ]
+                                              }
+                                            }
+                                          },
+                                          "data"
+                                        ]
+                                      },
+                                      "then": {
+                                        "inlineData": {
+                                          "mimeType": {
+                                            "$dataMime": {
+                                              "$ref": "part.video_url.url"
+                                            }
+                                          },
+                                          "data": {
+                                            "$dataPayload": {
+                                              "$ref": "part.video_url.url"
+                                            }
+                                          }
+                                        }
+                                      },
+                                      "else": {
+                                        "fileData": {
+                                          "fileUri": {
+                                            "$ref": "part.video_url.url"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "else": null
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      [
+                        {
+                          "text": {
+                            "$ref": "message.content"
+                          }
+                        }
+                      ]
+                    ]
+                  }
                 }
               }
             },
