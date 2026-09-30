@@ -56,21 +56,20 @@ function projectUpdatedAt(project: CanvasProject) {
     return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
-/**
- * Resolve the browser/desktop dual-store snapshot without allowing an older
- * backend response to erase edits that have already been persisted locally.
- * Unknown/equal versions intentionally keep the local copy: data preservation
- * is safer than treating a backend read as authoritative without evidence that
- * it is newer.
- */
+/** Keep the higher revision, and recover nodes present only in the canonical
+ * desktop database when both copies report the same revision. */
 export function selectPreferredCanvasProject(local: CanvasProject | null | undefined, backend: CanvasProject) {
     if (!local) return backend;
-    const localUpdatedAt = projectUpdatedAt(local);
-    const backendUpdatedAt = projectUpdatedAt(backend);
-    if (backendUpdatedAt !== localUpdatedAt) return backendUpdatedAt > localUpdatedAt ? backend : local;
     const localRevision = local.revision ?? 0;
     const backendRevision = backend.revision ?? 0;
     if (backendRevision !== localRevision) return backendRevision > localRevision ? backend : local;
+    const localNodeIds = new Set(local.nodes.map((node) => node.id));
+    const backendNodeIds = new Set(backend.nodes.map((node) => node.id));
+    if (backend.nodes.length > local.nodes.length && local.nodes.every((node) => backendNodeIds.has(node.id))) return backend;
+    if (local.nodes.length > backend.nodes.length && backend.nodes.every((node) => localNodeIds.has(node.id))) return local;
+    const localUpdatedAt = projectUpdatedAt(local);
+    const backendUpdatedAt = projectUpdatedAt(backend);
+    if (backendUpdatedAt !== localUpdatedAt) return backendUpdatedAt > localUpdatedAt ? backend : local;
     return local;
 }
 
@@ -318,7 +317,11 @@ export async function openLocalCanvasProjectFromBackend(id: string) {
                 ? state.projects.map((item) => item.id === id ? project : item)
                 : [...state.projects, project],
         }));
-        await flushCanvasStorePersistence();
+        // IndexedDB is a cache. Its WebKit transaction may stall even after
+        // the Go repository has returned the current project.
+        void flushCanvasStorePersistence().catch((error) => {
+            console.error("画布本地缓存写入失败，已从桌面数据库打开项目", { id, error });
+        });
         return project;
     } catch {
         return openLocalCanvasProject(id);
