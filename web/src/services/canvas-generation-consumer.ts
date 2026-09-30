@@ -6,6 +6,7 @@ import { localForageStorageForScope } from "@/lib/localforage-storage";
 import { getActiveUserScope } from "@/lib/user-scope";
 import type { GenerationTask, GenerationTaskOutput } from "@/services/api/task-center";
 import { generationEffectApplied } from "@/services/generation-consumer-dedupe";
+import { isLocalWorkspaceMode } from "@/services/workspace-mode";
 import {
     CANVAS_STORE_KEY,
     canvasStoreStorageRevision,
@@ -435,6 +436,48 @@ function rebaseCommittedCanvasGenerationOntoLiveProject(scope: string, projectId
     }).document.state.projects.find((project) => project.id === projectId);
 }
 
+async function persistLocalCanvasGenerationEffect(input: CanvasGenerationEffectInput, delta: ReturnType<typeof generationProjectDelta>, scope: string) {
+    throwIfAborted(input.signal);
+    if (getActiveUserScope() !== scope) throw new Error("账号已切换，无法写入生成结果");
+    const current = useCanvasStore.getState().projects.find((project) => project.id === input.projectId);
+    if (!current) throw new Error("画布项目不存在，无法持久化生成副作用");
+
+    // The Go repository is the desktop source of truth. A recent node can be
+    // present in the editor and SQLite while the IndexedDB cache still lacks it.
+    // Rebase against the live project and restore only nodes changed by this
+    // effect from the editor's pre-generation snapshot.
+    const currentNodeIds = new Set(current.nodes.map((node) => node.id));
+    const changedNodes = new Set((input.nodes || [])
+        .filter((node) => generationEffectApplied(node.metadata || {}, input.effectKey))
+        .map((node) => node.id));
+    const liveNodes = [...current.nodes, ...(input.previousNodes || []).filter((node) => changedNodes.has(node.id) && !currentNodeIds.has(node.id))];
+    const liveProject = { ...current, nodes: liveNodes };
+    const baseProject = { ...delta.baseProject, revision: current.revision };
+    const localProject = { ...delta.localProject, revision: current.revision };
+    const rebased = rebaseCanvasProjects({
+        document: parseCanvasStorageDocument(null, [liveProject]),
+        baseProjects: [baseProject],
+        localProjects: [localProject],
+        baseRevision: 0,
+    });
+    if (rebased.conflicts.length) throw new Error("画布生成副作用与并发修改冲突");
+    const merged = rebased.document.state.projects.find((project) => project.id === input.projectId);
+    if (!merged) throw new Error("画布项目不存在，无法持久化生成副作用");
+    if ([...changedNodes].some((nodeId) => !merged.nodes.some((node) => node.id === nodeId && generationEffectApplied(node.metadata || {}, input.effectKey)))) {
+        throw new Error("生成结果未能合并到画布节点");
+    }
+    throwIfAborted(input.signal);
+    useCanvasStore.getState().updateProject(input.projectId, {
+        nodes: merged.nodes,
+        connections: merged.connections,
+        chatSessions: merged.chatSessions,
+        activeChatId: merged.activeChatId,
+    });
+    const { syncLocalCanvasGenerationProjectToBackend } = await import("@/services/local-workspace-repository");
+    await syncLocalCanvasGenerationProjectToBackend(input.projectId);
+    return useCanvasStore.getState().projects.find((project) => project.id === input.projectId) ?? merged;
+}
+
 export async function persistCanvasGenerationEffect(input: CanvasGenerationEffectInput) {
     throwIfAborted(input.signal);
     const scope = getActiveUserScope();
@@ -451,6 +494,7 @@ export async function persistCanvasGenerationEffect(input: CanvasGenerationEffec
 
     const delta = generationProjectDelta(input, memoryProject);
     if (!delta.stamped) throw new Error("生成副作用缺少持久幂等标记");
+    if (isLocalWorkspaceMode()) return persistLocalCanvasGenerationEffect(input, delta, scope);
 
     const unregisterAttempt = registerCanvasGenerationPersistenceAttempt(scope, input.projectId, input.effectKey, {
         previousNodes: input.previousNodes,
