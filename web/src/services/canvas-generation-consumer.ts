@@ -22,7 +22,7 @@ import {
     withCanvasStorePersistenceSuppressed,
     type CanvasProject,
 } from "@/stores/canvas/use-canvas-store";
-import type { CanvasAssistantSession, CanvasConnection, CanvasNodeData } from "@/types/canvas";
+import { CanvasNodeType, type CanvasAssistantSession, type CanvasConnection, type CanvasNodeData } from "@/types/canvas";
 
 function throwIfAborted(signal?: AbortSignal) {
     if (signal?.aborted) throw new DOMException("The operation was aborted", "AbortError");
@@ -441,6 +441,31 @@ async function persistLocalCanvasGenerationEffect(input: CanvasGenerationEffectI
     if (getActiveUserScope() !== scope) throw new Error("账号已切换，无法写入生成结果");
     const current = useCanvasStore.getState().projects.find((project) => project.id === input.projectId);
     if (!current) throw new Error("画布项目不存在，无法持久化生成副作用");
+
+    const previousById = new Map((input.previousNodes || []).map((node) => [node.id, node]));
+    const changed = (input.nodes || []).filter((node) => JSON.stringify(previousById.get(node.id)) !== JSON.stringify(node));
+    const completedTextNode = changed.length === 1 && changed[0]?.type === CanvasNodeType.Text && generationEffectApplied(changed[0].metadata || {}, input.effectKey)
+        && !input.connections && !input.chatSessions ? changed[0] : undefined;
+    if (completedTextNode) {
+        const liveNode = current.nodes.find((node) => node.id === completedTextNode.id) ?? previousById.get(completedTextNode.id);
+        if (!liveNode) throw new Error("画布中找不到对应文本节点");
+        const completedNode: CanvasNodeData = {
+            ...liveNode,
+            type: CanvasNodeType.Text,
+            metadata: {
+                ...liveNode.metadata,
+                ...completedTextNode.metadata,
+                generationEffectKeys: [...new Set([...(liveNode.metadata?.generationEffectKeys || []), ...(completedTextNode.metadata?.generationEffectKeys || [])])],
+            },
+        };
+        const nodes = current.nodes.some((node) => node.id === completedNode.id)
+            ? current.nodes.map((node) => node.id === completedNode.id ? completedNode : node)
+            : [...current.nodes, completedNode];
+        useCanvasStore.getState().updateProject(input.projectId, { nodes });
+        const { syncLocalCanvasGeneratedTextNodeToBackend } = await import("@/services/local-workspace-repository");
+        await syncLocalCanvasGeneratedTextNodeToBackend(input.projectId, completedNode, input.effectKey);
+        return useCanvasStore.getState().projects.find((project) => project.id === input.projectId) ?? { ...current, nodes };
+    }
 
     // The Go repository is the desktop source of truth. A recent node can be
     // present in the editor and SQLite while the IndexedDB cache still lacks it.

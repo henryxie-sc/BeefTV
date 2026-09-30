@@ -18,6 +18,8 @@ import { canvasTaskFailureMetadata } from "./canvas-generation-failure";
 import { runGenerationConsumer } from "@/services/generation-consumer-lifecycle";
 import { consumeCanvasGenerationContinuation } from "./use-canvas-operation-history";
 import { syncLocalCanvasProjectToBackend } from "@/services/local-workspace-repository";
+import { generationEffectApplied } from "@/services/generation-consumer-dedupe";
+import { attachNodeEffectKey } from "@/services/generation-task-materializer";
 
 type CanvasGenerationRequest = {
     targetNodeId: string;
@@ -251,7 +253,8 @@ export function useCanvasGeneration({ projectId, domainProjectId, projectLoaded,
                 current.map((node) => {
                     if (node.id !== targetNodeId) return node;
                     const failed = task.status === "failed" || task.status === "cancelled";
-                    const hasCompletedContent = task.status === "succeeded" && Boolean(node.metadata?.content);
+                    const hasCompletedContent = task.status === "succeeded" && Boolean(node.metadata?.content)
+                        && generationEffectApplied(node.metadata || {}, attachNodeEffectKey(task.id, node.id, 0));
                     const failure = failed ? canvasTaskFailureMetadata(task, node.metadata) : undefined;
                     return {
                         ...node,
@@ -378,7 +381,9 @@ export function useCanvasGeneration({ projectId, domainProjectId, projectLoaded,
                 const pendingAgentContinuation = node.metadata?.agentGenerationContinuation?.status === "pending";
                 const aggregateBatchRoot = node.metadata?.isBatchRoot && node.metadata.batchChildIds?.length && !node.metadata.taskId;
                 if (aggregateBatchRoot && !pendingAgentContinuation) return false;
-                return pendingAgentContinuation || node.metadata?.status === NODE_STATUS_LOADING || node.metadata?.errorDetails === "页面刷新后生成已中断，请重新生成。" || Boolean(node.metadata?.taskId && node.metadata.status !== NODE_STATUS_SUCCESS);
+                const incompleteTextResult = node.type === CanvasNodeType.Text && node.metadata?.taskId && node.metadata.taskStatus === "succeeded"
+                    && !generationEffectApplied(node.metadata, attachNodeEffectKey(node.metadata.taskId, node.id, 0));
+                return pendingAgentContinuation || incompleteTextResult || node.metadata?.status === NODE_STATUS_LOADING || node.metadata?.errorDetails === "页面刷新后生成已中断，请重新生成。" || Boolean(node.metadata?.taskId && node.metadata.status !== NODE_STATUS_SUCCESS);
             });
             const needsDiscovery = recoveryNodes.some((node) => !node.metadata?.taskId && !node.metadata?.agentGenerationContinuation?.taskId);
             const projectTasks = needsDiscovery && !localMode

@@ -1,9 +1,11 @@
 import { flushCanvasStorePersistence, useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-store";
 import { useCanvasHistoryStore } from "@/stores/canvas/use-canvas-history-store";
-import { http } from "@/services/api/request";
+import { ApiError, http } from "@/services/api/request";
 import { resourceIdFromStorageKey } from "@/services/api/resources";
 import { useAssetStore, type Asset } from "@/stores/use-asset-store";
 import { isLocalWorkspaceMode } from "@/services/workspace-mode";
+import type { CanvasNodeData } from "@/types/canvas";
+import { generationEffectApplied } from "@/services/generation-consumer-dedupe";
 
 type LocalCanvasContent = Partial<Pick<CanvasProject, "nodes" | "connections" | "chatSessions" | "activeChatId">>;
 type CanvasSaveSummary = Pick<CanvasProject, "id" | "title" | "createdAt" | "updatedAt" | "revision">;
@@ -99,9 +101,18 @@ export async function createLocalCanvasProject(title: string, projectId?: string
 }
 
 /** Serialize writes per canvas so optimistic revisions cannot race each other. */
-function syncLocalCanvasProject(id: string, includeGeneratedAssets: boolean): Promise<void> {
+function queueLocalCanvasBackendSave(id: string, operation: () => Promise<void>): Promise<void> {
     const previous = backendSaveTails.get(id) || Promise.resolve();
-    const next = previous.catch(() => undefined).then(async () => {
+    const next = previous.catch(() => undefined).then(operation);
+    const tail = next.finally(() => {
+        if (backendSaveTails.get(id) === tail) backendSaveTails.delete(id);
+    });
+    backendSaveTails.set(id, tail);
+    return tail;
+}
+
+function syncLocalCanvasProject(id: string, includeGeneratedAssets: boolean): Promise<void> {
+    return queueLocalCanvasBackendSave(id, async () => {
         const project = openLocalCanvasProject(id);
         if (!project) return;
         const assets = includeGeneratedAssets ? canvasGenerationCommitAssets(project, useAssetStore.getState().assets) : [];
@@ -125,11 +136,6 @@ function syncLocalCanvasProject(id: string, includeGeneratedAssets: boolean): Pr
             console.error("画布本地缓存写入失败，已保存到桌面数据库", { id, error });
         });
     });
-    const tail = next.finally(() => {
-        if (backendSaveTails.get(id) === tail) backendSaveTails.delete(id);
-    });
-    backendSaveTails.set(id, tail);
-    return tail;
 }
 
 export function syncLocalCanvasProjectToBackend(id: string): Promise<void> {
@@ -223,6 +229,37 @@ export async function persistCanvasTimeline(id: string, timeline: NonNullable<Ca
 
 export function syncLocalCanvasGenerationProjectToBackend(id: string): Promise<void> {
     return syncLocalCanvasProject(id, true);
+}
+
+export function syncLocalCanvasGeneratedTextNodeToBackend(id: string, completedNode: CanvasNodeData, effectKey: string): Promise<void> {
+    return queueLocalCanvasBackendSave(id, async () => {
+        const endpoint = `/canvas-projects/${encodeURIComponent(id)}`;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            const response = await http.get<{ project: CanvasProject }>(endpoint);
+            const backend = response.project;
+            if (!backend) throw new Error("画布项目不存在，无法保存生成文本");
+            const current = openLocalCanvasProject(id);
+            const liveNode = current?.nodes.find((candidate) => candidate.id === completedNode.id);
+            const node = liveNode && generationEffectApplied(liveNode.metadata || {}, effectKey) ? liveNode : completedNode;
+            const nodes = backend.nodes.some((candidate) => candidate.id === node.id)
+                ? backend.nodes.map((candidate) => candidate.id === node.id ? node : candidate)
+                : [...backend.nodes, node];
+            try {
+                const saved = await http.put<{ project: CanvasSaveSummary }>(endpoint, { project: { ...backend, nodes } });
+                useCanvasStore.setState((state) => ({
+                    projects: state.projects.map((project) => project.id === id
+                        ? { ...project, revision: saved.project.revision, ...(project.updatedAt === current?.updatedAt ? { updatedAt: saved.project.updatedAt } : {}) }
+                        : project),
+                }));
+                void flushCanvasStorePersistence().catch((error) => {
+                    console.error("画布本地缓存写入失败，已保存到桌面数据库", { id, error });
+                });
+                return;
+            } catch (error) {
+                if (!(error instanceof ApiError && error.status === 409 && attempt < 2)) throw error;
+            }
+        }
+    });
 }
 
 export function scheduleLocalCanvasBackendSync(id: string) {
