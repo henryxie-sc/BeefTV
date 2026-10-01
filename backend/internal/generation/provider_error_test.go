@@ -13,6 +13,15 @@ import (
 	"infinite-canvas/backend/internal/generation"
 )
 
+func TestWindowsSocketFailureIsActionable(t *testing.T) {
+	for _, message := range []string{"An existing connection was forcibly closed by the remote host.", "An established connection was aborted by the software in your host machine."} {
+		failure := generation.ClassifyError(errors.New(`Get "https://private.example/task?token=secret": read tcp: wsarecv: ` + message))
+		if failure.Category != generation.CategoryNetwork || strings.Contains(failure.UserMessage(), "wsarecv") || strings.Contains(failure.UserMessage(), "secret") {
+			t.Fatalf("failure=%+v message=%s", failure, failure.UserMessage())
+		}
+	}
+}
+
 func TestGatewayReferenceGeometryAndRequestSize(t *testing.T) {
 	height := `{"error":{"code":"400","message":"Height must be between 300px and 6000px","type":"api_error"}} (request id: 202609270829245377912978268d9d6USz1NP3R)`
 	failure := generation.ClassifyText(height)
@@ -267,8 +276,8 @@ func TestBeefAPIErrorCodeInventory(t *testing.T) {
 	if err := json.Unmarshal(data, &inventory); err != nil {
 		t.Fatal(err)
 	}
-	if len(inventory) != 50 {
-		t.Fatalf("BeefAPI error code inventory has %d entries, want 50", len(inventory))
+	if len(inventory) != 51 {
+		t.Fatalf("BeefAPI error code inventory has %d entries, want 51", len(inventory))
 	}
 	for code, category := range inventory {
 		t.Run(code, func(t *testing.T) {

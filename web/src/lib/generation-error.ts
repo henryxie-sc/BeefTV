@@ -15,6 +15,7 @@ export const GENERATION_ERROR_CATEGORIES = [
     "moderation_reference",
     "moderation_output",
     "invalid_params",
+    "local_storage",
     "context_too_long",
     "input_inaccessible",
     "input_too_large",
@@ -29,6 +30,7 @@ export const GENERATION_ERROR_CATEGORIES = [
     "cancelled",
     "partial_success",
     "download_failed",
+    "delivery_failed",
     "results_missing",
     "malformed_response",
     "unknown",
@@ -95,7 +97,7 @@ type CategoryCopy = { reason: string; action: string };
 const CATEGORY_COPY: Record<GenerationErrorCategory, CategoryCopy> = {
     auth: { reason: "模型服务鉴权失败", action: "请检查 API Key 后重试" },
     permission: { reason: "当前渠道没有使用该模型的权限", action: "请更换模型或检查渠道权限" },
-    quota_user: { reason: "当前账号额度不足", action: "请检查账号余额或联系管理员调整额度后重试" },
+    quota_user: { reason: "当前账号可用额度不足", action: "请检查账号余额，补充额度或调整令牌、套餐额度后重试" },
     quota_upstream: { reason: "模型供应商拒绝了计费或额度相关请求", action: "请到供应商核对账单与额度后，再决定是否重试" },
     quota_unknown: { reason: "模型服务拒绝了计费或额度相关请求", action: "请到当前渠道或模型供应商核对账单与额度后，再决定是否重试" },
     quota_limit: { reason: "模型调用已达到设置的用量上限", action: "请检查当前渠道的用量或预算限制，调整后再试" },
@@ -103,6 +105,7 @@ const CATEGORY_COPY: Record<GenerationErrorCategory, CategoryCopy> = {
     moderation_reference: { reason: "参考素材未通过内容安全审核", action: "请检查并更换参考素材后重新生成" },
     moderation_output: { reason: "生成结果未通过内容安全审核", action: "请调整提示词或参考素材后重新生成" },
     invalid_params: { reason: "模型不接受当前参数", action: "请检查模型、尺寸、时长、格式或数量后重试" },
+    local_storage: { reason: "本地任务保存失败，尚未提交生成", action: "请重启 BeefTV 后重试；若仍失败，请更新应用并联系支持" },
     context_too_long: { reason: "输入内容超出模型长度限制", action: "请缩短提示词或减少参考内容后重试" },
     input_inaccessible: { reason: "参考素材无法读取", action: "请检查素材后重试" },
     input_too_large: { reason: "参考素材过大", action: "请压缩或更换素材后重试" },
@@ -117,12 +120,14 @@ const CATEGORY_COPY: Record<GenerationErrorCategory, CategoryCopy> = {
     cancelled: { reason: "任务已取消", action: "可按原输入重新提交" },
     partial_success: { reason: "部分结果已生成，其余失败", action: "请查看已有结果后再决定是否补做" },
     download_failed: { reason: "生成结果下载失败", action: "请稍后重新加载，不要立即重新提交" },
+    delivery_failed: { reason: "视频已生成，但暂时无法取回", action: "请联系支持恢复成片，恢复后点击「取回结果」；无需重新付费生成" },
     results_missing: { reason: "任务结束但没有可用结果", action: "请查看详情后再决定是否重试" },
     malformed_response: { reason: "模型服务返回了无法解析的内容", action: "请查看详情并核对原任务状态后，再决定是否重新生成" },
     unknown: { reason: "生成失败", action: "请查看详情后再决定是否重试" },
 };
 
 const PROVIDER_CODE_CATEGORIES: Record<string, GenerationErrorCategory> = {
+    local_storage_failed: "local_storage",
     accountoverdueerror: "quota_upstream",
     "operationdenied.serviceoverdue": "quota_upstream",
     setlimitexceeded: "quota_limit",
@@ -224,6 +229,7 @@ const PROVIDER_CODE_CATEGORIES: Record<string, GenerationErrorCategory> = {
     request_cancelled: "cancelled",
     provider_submission_unknown: "submission_uncertain",
     video_submission_unknown: "submission_uncertain",
+    video_delivery_failed: "delivery_failed",
     provider_reference_invalid: "input_inaccessible",
 };
 
@@ -355,7 +361,7 @@ export function formatGenerationDiagnostics(explanation: GenerationFailureExplan
         `原因：${sanitizeProviderText(explanation.reason)}`,
         explanation.action ? `下一步：${sanitizeProviderText(explanation.action)}` : "",
         `类别：${explanation.category}`,
-        `错误来源：${({ local_validation: "本地参数校验", upstream_http: "上游 HTTP 响应", upstream_response: "上游业务响应", local_result: "本地结果处理", local_response: "本地响应大小限制", client_result: "画布应用结果", unknown: "未记录" } as Record<string, string>)[evidence?.source || "unknown"] || "未记录"}`,
+        `错误来源：${explanation.category === "local_storage" ? "本地任务存储" : ({ local_validation: "本地参数校验", upstream_http: "上游 HTTP 响应", upstream_response: "上游业务响应", local_result: "本地结果处理", local_response: "本地响应大小限制", client_result: "画布应用结果", unknown: "未记录" } as Record<string, string>)[evidence?.source || "unknown"] || "未记录"}`,
         `错误摘要：${sanitizeProviderText(evidence?.summary || context.errorSummary || explanation.summary || "") || "未记录"}`,
         evidence && ["upstream_http", "upstream_response"].includes(evidence.source) && sanitizeProviderCode(evidence.providerCode || "") ? `上游代码：${sanitizeProviderCode(evidence.providerCode || "")}` : "",
         evidence?.httpStatus && Number.isInteger(evidence.httpStatus) && evidence.httpStatus >= 100 && evidence.httpStatus <= 599 ? `HTTP 状态：${evidence.httpStatus}` : "",
@@ -422,7 +428,11 @@ function classifyUnknown(error: unknown, context: GenerationFailureContext): Cla
     if (context.stage === "submission_unknown") return { category: "submission_uncertain", uncertain: true, retryable: false };
     if (!error) return { category: "unknown", retryable: false };
     if (typeof error === "object" && error) {
-        const record = error as Record<string, unknown>;
+    const record = error as Record<string, unknown>;
+        if (record.reason === "local_storage_failed") return { category: "local_storage", fromCode: true, retryable: false };
+        if (record.name === "ApiError" && record.reason === "quota_exceeded") {
+            return { category: "quota_limit", reason: sanitizeProviderText(String(record.message || "工作区用量已达到上限")), action: "请清理不需要的任务记录或素材后重试", fromCode: true, retryable: false };
+        }
         const response = record.response && typeof record.response === "object" ? (record.response as Record<string, unknown>) : undefined;
         const status = numericStatus(record.status) ?? numericStatus(record.statusCode) ?? numericStatus(response?.status);
         const data = record.data ?? record.body ?? response?.data ?? record.response;
@@ -449,6 +459,10 @@ function classifyHttp(status: number | undefined, body: unknown): Classified {
     if (body && typeof body === "object") {
         const fromObject = classifyText(stringifyAllowlisted(body));
         if (fromObject.fromCode || (fromObject.category !== "unknown" && classified.category === "unknown")) classified = fromObject;
+    }
+    const fields = extractProviderFields(typeof body === "string" ? body : body && typeof body === "object" ? stringifyAllowlisted(body) : "");
+    if (status === 402 && fields.code === "video_reservation_failed" && fields.message.startsWith("insufficient balance for this video request")) {
+        classified = { ...classified, category: "quota_user", fromCode: true, reason: undefined, action: undefined };
     }
     if (classified.category !== "unknown" && !classified.fromCode && !trustProviderMessageStatus(status)) {
         classified = { category: "unknown", retryable: false };
@@ -958,7 +972,7 @@ function retryableCategory(category: GenerationErrorCategory) {
 }
 
 function isNetworkText(value: string) {
-    return /\b(?:dial tcp|connection refused|connection reset|no such host|i\/o timeout|context deadline exceeded|network error|failed to fetch|fetch failed|socket hang up|econnrefused|econnreset|etimedout)\b/i.test(value);
+    return /\b(?:dial tcp|connection refused|connection reset|forcibly closed by the remote host|software caused connection abort|connection was aborted by the software in your host machine|wsaeconnreset|wsaeconnaborted|no such host|i\/o timeout|context deadline exceeded|network error|failed to fetch|fetch failed|socket hang up|econnrefused|econnreset|etimedout)\b/i.test(value);
 }
 
 function isMalformedText(value: string) {
@@ -978,6 +992,7 @@ function isResultsMissingText(value: string) {
 }
 
 function matchPersistedCategory(text: string): GenerationErrorCategory | "" {
+    if (text.startsWith("当前账号额度不足")) return "quota_user";
     for (const [category, copy] of Object.entries(CATEGORY_COPY) as Array<[GenerationErrorCategory, CategoryCopy]>) {
         if (category === "unknown") continue;
         if (text.startsWith(copy.reason)) return category;

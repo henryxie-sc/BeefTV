@@ -28,6 +28,7 @@ const (
 	CategoryModerationReference FailureCategory = "moderation_reference"
 	CategoryModerationOutput    FailureCategory = "moderation_output"
 	CategoryInvalidParams       FailureCategory = "invalid_params"
+	CategoryLocalStorage        FailureCategory = "local_storage"
 	CategoryContextTooLong      FailureCategory = "context_too_long"
 	CategoryInputInaccessible   FailureCategory = "input_inaccessible"
 	CategoryInputTooLarge       FailureCategory = "input_too_large"
@@ -42,6 +43,7 @@ const (
 	CategoryCancelled           FailureCategory = "cancelled"
 	CategoryPartialSuccess      FailureCategory = "partial_success"
 	CategoryDownloadFailed      FailureCategory = "download_failed"
+	CategoryDeliveryFailed      FailureCategory = "delivery_failed"
 	CategoryResultsMissing      FailureCategory = "results_missing"
 	CategoryMalformedResponse   FailureCategory = "malformed_response"
 	CategoryUnknown             FailureCategory = "unknown"
@@ -80,7 +82,7 @@ type categoryCopy struct {
 var categoryCopies = map[FailureCategory]categoryCopy{
 	CategoryAuth:                {Reason: "模型服务鉴权失败", Action: "请检查 API Key 后重试"},
 	CategoryPermission:          {Reason: "当前渠道没有使用该模型的权限", Action: "请更换模型或检查渠道权限"},
-	CategoryQuotaUser:           {Reason: "当前账号额度不足", Action: "请检查账号余额，或联系管理员调整额度后重试"},
+	CategoryQuotaUser:           {Reason: "当前账号可用额度不足", Action: "请检查账号余额，补充额度或调整令牌、套餐额度后重试"},
 	CategoryQuotaUpstream:       {Reason: "模型供应商拒绝了计费或额度相关请求", Action: "请到供应商核对账单与额度后，再决定是否重试"},
 	CategoryQuotaUnknown:        {Reason: "模型服务拒绝了计费或额度相关请求", Action: "请到当前渠道或模型供应商核对账单与额度后，再决定是否重试"},
 	CategoryQuotaLimit:          {Reason: "模型调用已达到设置的用量上限", Action: "请检查当前渠道的用量或预算限制，调整后再试"},
@@ -88,6 +90,7 @@ var categoryCopies = map[FailureCategory]categoryCopy{
 	CategoryModerationReference: {Reason: "参考素材未通过内容安全审核", Action: "请检查并更换参考素材后重新生成"},
 	CategoryModerationOutput:    {Reason: "生成结果未通过内容安全审核", Action: "请调整提示词或参考素材后重新生成"},
 	CategoryInvalidParams:       {Reason: "模型不接受当前参数", Action: "请检查模型、尺寸、时长、格式或数量后重试"},
+	CategoryLocalStorage:        {Reason: "本地任务保存失败，尚未提交生成", Action: "请重启 BeefTV 后重试；若仍失败，请更新应用并联系支持"},
 	CategoryContextTooLong:      {Reason: "输入内容超出模型长度限制", Action: "请缩短提示词或减少参考内容后重试"},
 	CategoryInputInaccessible:   {Reason: "参考素材无法读取", Action: "请检查素材后重试"},
 	CategoryInputTooLarge:       {Reason: "参考素材过大", Action: "请压缩或更换素材后重试"},
@@ -102,6 +105,7 @@ var categoryCopies = map[FailureCategory]categoryCopy{
 	CategoryCancelled:           {Reason: "任务已取消", Action: "可按原输入重新提交"},
 	CategoryPartialSuccess:      {Reason: "部分结果已生成，其余失败", Action: "请查看已有结果后再决定是否补做"},
 	CategoryDownloadFailed:      {Reason: "生成结果下载失败", Action: "请稍后重新加载，不要立即重新提交"},
+	CategoryDeliveryFailed:      {Reason: "视频已生成，但暂时无法取回", Action: "请联系支持恢复成片，恢复后点击「取回结果」；无需重新付费生成"},
 	CategoryResultsMissing:      {Reason: "任务结束但没有可用结果", Action: "请查看详情后再决定是否重试"},
 	CategoryMalformedResponse:   {Reason: "模型服务返回了无法解析的内容", Action: "请查看详情并核对原任务状态后，再决定是否重新生成"},
 	CategoryUnknown:             {Reason: "生成失败", Action: "请查看详情后再决定是否重试"},
@@ -129,6 +133,7 @@ var (
 )
 
 var providerCodeCategories = map[string]FailureCategory{
+	"local_storage_failed":             CategoryLocalStorage,
 	"contentsecuritydetectionerror":    CategoryProviderUnavailable,
 	"accountoverdueerror":              CategoryQuotaUpstream,
 	"operationdenied.serviceoverdue":   CategoryQuotaUpstream,
@@ -212,6 +217,7 @@ var providerCodeCategories = map[string]FailureCategory{
 	"provider_query_failed":            CategoryAsyncFailed,
 	"provider_submission_unknown":      CategorySubmissionUncertain,
 	"video_submission_unknown":         CategorySubmissionUncertain,
+	"video_delivery_failed":            CategoryDeliveryFailed,
 	"provider_reference_invalid":       CategoryInputInaccessible,
 	"rate_limited":                     CategoryThrottled,
 	"bad_gateway":                      CategoryProviderUnavailable,
@@ -360,6 +366,12 @@ func (e PayloadError) Error() string {
 func ClassifyHTTP(status int, statusText string, body string) Failure {
 	failure := ClassifyText(body)
 	failure.HTTPStatus = status
+	// Reservation failures also use HTTP 503; only explicit funding rejection identifies caller quota.
+	if status == 402 && failure.ProviderCode == "video_reservation_failed" && strings.HasPrefix(failure.ProviderMessage, "insufficient balance for this video request") {
+		failure.Category = CategoryQuotaUser
+		failure.FromCode = true
+		failure.Reason, failure.Action = "", ""
+	}
 	if failure.Category != CategoryUnknown && !failure.FromCode && ((status != 0 && !trustProviderMessageStatus(status)) || (htmlBodyPattern.MatchString(strings.TrimSpace(body)) && status >= 400)) {
 		failure.Category = CategoryUnknown
 		failure.Reason = ""
@@ -576,7 +588,7 @@ func ClassifyAppError(status int, code int, reason string, message string) Failu
 }
 
 func WithDownloadFailure(failure Failure, taskID string) Failure {
-	if failure.Category == CategoryAuth || failure.Category == CategoryPermission || failure.IsModeration() || failure.Category == CategoryInvalidParams {
+	if failure.Category == CategoryAuth || failure.Category == CategoryPermission || failure.IsModeration() || failure.Category == CategoryInvalidParams || failure.Category == CategoryDeliveryFailed {
 		failure.TaskID = firstNonEmpty(failure.TaskID, taskID)
 		return normalizeFailure(failure)
 	}
@@ -1231,7 +1243,7 @@ func extractExplicitHTTPStatus(raw string) int {
 }
 
 func isNetworkText(value string) bool {
-	return regexp.MustCompile(`(?i)\b(?:dial tcp|connection refused|connection reset|no such host|i/o timeout|network error|failed to fetch|fetch failed|socket hang up|econnrefused|econnreset|etimedout|连接模型服务失败)\b`).MatchString(value)
+	return regexp.MustCompile(`(?i)\b(?:dial tcp|connection refused|connection reset|forcibly closed by the remote host|software caused connection abort|connection was aborted by the software in your host machine|wsaeconnreset|wsaeconnaborted|no such host|i/o timeout|network error|failed to fetch|fetch failed|socket hang up|econnrefused|econnreset|etimedout|连接模型服务失败)\b`).MatchString(value)
 }
 
 func isMalformedText(value string) bool {
@@ -1251,6 +1263,9 @@ func isResultsMissingText(value string) bool {
 }
 
 func matchPersistedCategory(text string) FailureCategory {
+	if strings.HasPrefix(text, "当前账号额度不足") {
+		return CategoryQuotaUser
+	}
 	if strings.HasPrefix(text, "提示词或参考素材未通过内容安全审核") {
 		return CategoryModerationInput
 	}
