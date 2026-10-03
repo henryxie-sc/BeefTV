@@ -37,6 +37,7 @@ export enum CanvasNodeType {
     ColorGrade = "colorgrade",
     MediaConversion = "media-conversion",
     BatchTable = "batch-table",
+    Director = "director",
 }
 
 /** Runtime IDs contributed by plugins share the persisted node type field. */
@@ -337,6 +338,8 @@ export type CanvasNodeMetadata = {
     actionBoardColumns?: number;
     taskId?: string;
     taskClientOperationId?: string;
+    taskClientOperationInput?: string;
+    taskClientOperationTerminal?: boolean;
     retryOf?: string;
     attemptGroupId?: string;
     taskStatus?: "queued" | "running" | "succeeded" | "failed" | "cancelled" | string;

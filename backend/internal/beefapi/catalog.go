@@ -9,7 +9,9 @@ import (
 	"infinite-canvas/backend/internal/workspace"
 )
 
-func applyCatalog(store *workspace.ProviderConfig, models []CatalogModel, previousAccountID, nextAccountID string) error {
+const DefaultManagedAssistantModel = "gpt-6-astra"
+
+func applyCatalog(store *workspace.ProviderConfig, models []CatalogModel, previousAccountID, nextAccountID string, authorizationID string) error {
 	if store == nil {
 		return nil
 	}
@@ -43,6 +45,12 @@ func applyCatalog(store *workspace.ProviderConfig, models []CatalogModel, previo
 			if protocol != "" {
 				profile["protocol"] = protocol
 			}
+			if capability == "video" {
+				if video, ok := NormalizeCatalogVideoCapability(model.VideoCapabilities); ok {
+					profile["capabilityConfig"] = map[string]any{"version": 1, "video": video}
+					profile["videoCapabilitiesVersion"] = model.VideoCapabilitiesVersion
+				}
+			}
 		}
 		nextProfiles = append(nextProfiles, profile)
 	}
@@ -71,11 +79,34 @@ func applyCatalog(store *workspace.ProviderConfig, models []CatalogModel, previo
 		}}, channels...)
 	}
 	config["channels"] = channels
+	defaultModel := ""
+	if authorizationID != "" {
+		preferred := DefaultManagedAssistantModel
+		for _, raw := range channels {
+			channel, _ := raw.(map[string]any)
+			if channel["id"] != ChannelID {
+				continue
+			}
+			if aliases, ok := channel["modelAliases"].(map[string]any); ok {
+				if alias, ok := aliases[preferred].(string); ok && strings.TrimSpace(alias) != "" {
+					preferred = strings.TrimSpace(alias)
+				}
+			}
+		}
+		// Only the freshly fetched catalog can establish availability, not a stale merged entry.
+		for _, model := range models {
+			capability, protocol := catalogCapabilityAndProtocol(model)
+			if model.ID == preferred && capability == "text" && (protocol == "chat-completion" || protocol == "claude-api" || protocol == "responses" || protocol == "openai-response") {
+				defaultModel = ChannelID + "::" + preferred
+				break
+			}
+		}
+	}
 	body, err := json.Marshal(config)
 	if err != nil {
 		return err
 	}
-	return store.SaveLocalModelConfig(body)
+	return store.SaveCatalogWithAssistantDefault(body, authorizationID, defaultModel)
 }
 
 func clearBeefAPIModels(store *workspace.ProviderConfig) error {
@@ -145,7 +176,7 @@ func catalogCapabilityAndProtocol(model CatalogModel) (capability, protocol stri
 		{capability: "audio", protocol: "openai-audio", endpoints: []string{"audio.speech", "audio-speech"}},
 		{capability: "text", protocol: "openai-response", endpoints: []string{"openai-response", "openai-response-compact", "responses"}},
 		{capability: "text", protocol: "claude-api", endpoints: []string{"anthropic", "messages"}},
-		{capability: "text", protocol: "google-gemini-generate-content", endpoints: []string{"gemini"}},
+		{capability: "text", protocol: "gemini-generate-content", endpoints: []string{"gemini"}},
 	} {
 		if !containsAnyString(endpoints, item.endpoints) {
 			continue

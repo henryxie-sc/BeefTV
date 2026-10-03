@@ -9,6 +9,34 @@ All notable public changes to BeefTV are documented in this file.
 - Added reproducible local builds, automated quality checks, and multi-architecture container publishing.
 - Standardized public artifacts, runtime identifiers, documentation, and repository links on the BeefTV name.
 
+## v1.7.1
+
+- Choose the canvas assistant model directly beside the message input.
+- Start with GPT 6 Astra after connecting BeefAPI, and keep your chosen model when refreshing the catalog.
+- Offer Astra, Opus 5.5, DeepSeek V4.1 Flash, and GLM 5.3 when available on the connected account.
+- Save model changes before starting the next assistant request.
+
+## v1.6.23
+
+- Add a canvas assistant for drafting scenes, editing nodes, connecting references, and proposing image or video generation for confirmation.
+- Keep assistant conversations and canvas changes recoverable across restarts, with conflict checks and per-turn undo.
+- Let external agents connect through the bundled CLI and MCP using revocable read-only or read-write access.
+- Share canvas operations and generation delivery across manual editing and agents, preserving original tasks during recovery.
+- Unify media rendering and workspace backup paths while retaining existing projects, assets, and tasks.
+
+## v1.6.22
+
+- Add a director workbench for staging objects, cameras, motion paths, and shot previews.
+- Keep director references and exported previews attached to the correct scene when switching or closing the workbench.
+- Preserve shot prompts, camera motion, and independent paths when editing or duplicating scenes.
+- Restore the canvas archive import entry in the project library.
+
+## v1.6.21
+
+- Keep copied media nodes on the canvas when regenerating them, including changing a copied video's resolution.
+- Upload local Seedance reference media before generation, supporting large files and validating media limits before submission.
+- Preserve reference dimensions and use the same media preparation path for built-in and protocol-based video generation.
+
 ## v1.6.20
 
 - Keep media file extensions when saving or renaming downloads in the Windows file dialog, while preserving overwrite confirmation and cancellation.
