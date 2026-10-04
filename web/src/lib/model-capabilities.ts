@@ -596,6 +596,7 @@ function applyAutoDLReferenceWorkflow(video: VideoCapabilityConfig, protocol: Mo
     video.references.maxAudios = 0;
     video.duration = { selection: "range", min: 1, max: 15, step: 1, default: 5 };
     video.resolutions = ["480p", "768p"];
+    if (!video.resolutions.includes(video.defaultResolution)) video.defaultResolution = "480p";
 }
 
 export function pluginWorkflowCapabilityConfig(protocol: ModelProtocol, workflow: ModelProtocolWorkflow): ModelCapabilityConfig | undefined {

@@ -12,6 +12,8 @@ test("AutoDL ZM accepts three reference images with a persisted generic profile,
     const config = { channels: [{ id: "autodl", models: ["minimax_h3_zm_u24"], interfaceType: "autodl-comfyui",
         modelProfiles: [{ model: "minimax_h3_zm_u24", capabilityConfig: generic }] }] } as AiConfig;
     const input = { textCount: 0, imageCount: 3, characterCount: 0, videoCount: 0, audioCount: 0 };
+    const profile = modelCapabilityConfigFor(config, model).video!;
+    assert.ok(profile.resolutions.includes(profile.defaultResolution));
     assert.equal(modelCompatibilityError(config, model, { capability: "video", videoSeconds: "13", input }), "");
     assert.match(modelCompatibilityError(config, model, { capability: "video", input: { ...input, imageCount: 10 } }), /参考图/);
     assert.match(modelCompatibilityError(config, model, { capability: "video", input: { ...input, videoCount: 1 } }), /参考视频/);
