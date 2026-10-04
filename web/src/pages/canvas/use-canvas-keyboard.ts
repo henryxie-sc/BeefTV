@@ -51,6 +51,10 @@ export function hasCanvasTextSelection(selection: TextSelectionLike | null | und
     return Boolean(selection && !selection.isCollapsed && selection.rangeCount > 0 && selection.toString());
 }
 
+export function isCanvasTextEditingElement(target: { closest(selector: string): unknown } | null | undefined) {
+    return Boolean(target?.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])"));
+}
+
 export function useCanvasKeyboard({
     enabled = true,
     nodesRef,
@@ -99,7 +103,7 @@ export function useCanvasKeyboard({
             if (target?.closest(".canvas-node-toolbar, .canvas-node-toolbar-menu")) return;
             const key = event.key.toLowerCase();
             const isModifierShortcut = event.metaKey || event.ctrlKey;
-            const isTextEditingTarget = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement || Boolean(target?.closest("[contenteditable='true']"));
+            const isTextEditingTarget = isCanvasTextEditingElement(target) || isCanvasTextEditingElement(document.activeElement);
 
             if (isModifierShortcut && !event.altKey && (key === "+" || key === "=" || event.code === "NumpadAdd")) {
                 event.preventDefault();
@@ -179,6 +183,7 @@ export function useCanvasKeyboard({
                 return;
             }
             if (isModifierShortcut && !event.altKey && key === "a") {
+                if (hasCanvasTextSelection(window.getSelection())) return;
                 event.preventDefault();
                 setSelectedNodeIds(new Set(nodesRef.current.map((node) => node.id)));
                 setSelectedConnectionId(null);
@@ -204,6 +209,9 @@ export function useCanvasKeyboard({
                 return;
             }
             if (event.key === "Delete" || event.key === "Backspace") {
+                // Native text selection can survive a focus change to the canvas.
+                // Never turn clearing that selection into deleting its owner node.
+                if (hasCanvasTextSelection(window.getSelection())) return;
                 // Backspace has a browser-level history action when it is not
                 // consumed. Once the canvas handles deletion, do not let the
                 // same key continue to other listeners or navigate away from
@@ -236,7 +244,7 @@ export function useCanvasKeyboard({
 
         const handlePaste = (event: ClipboardEvent) => {
             const target = event.target instanceof Element ? event.target : null;
-            if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement || target?.closest("[contenteditable='true']")) return;
+            if (isCanvasTextEditingElement(target) || isCanvasTextEditingElement(document.activeElement)) return;
             // 节点标记写入失败或仍在写入时避开旧系统图片，其余情况保持系统内容优先。
             event.preventDefault();
             const text = event.clipboardData?.getData("text/plain") || "";

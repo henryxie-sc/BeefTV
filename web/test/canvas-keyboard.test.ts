@@ -1,6 +1,25 @@
 import { expect, test } from "bun:test";
 
-import { hasCanvasTextSelection } from "../src/pages/canvas/use-canvas-keyboard";
+import { hasCanvasTextSelection, isCanvasTextEditingElement } from "../src/pages/canvas/use-canvas-keyboard";
+
+test("Canvas editing boundary includes native controls and every editable attribute mode", () => {
+    expect(isCanvasTextEditingElement(null)).toBe(false);
+    for (const mode of ["input", "textarea", "select", "true", "", "plaintext-only"]) {
+        expect(isCanvasTextEditingElement({ closest: (selector) => {
+            expect(selector).toContain("input, textarea, select");
+            expect(selector).toContain("[contenteditable]:not([contenteditable='false'])");
+            return { mode };
+        } })).toBe(true);
+    }
+    expect(isCanvasTextEditingElement({ closest: () => null })).toBe(false);
+});
+
+test("Canvas deletion yields to selected prompt text after focus moves away", async () => {
+    const source = await Bun.file(new URL("../src/pages/canvas/use-canvas-keyboard.ts", import.meta.url)).text();
+    const block = source.slice(source.indexOf('if (event.key === "Delete" || event.key === "Backspace")'));
+    expect(block.indexOf("if (hasCanvasTextSelection(window.getSelection())) return;")).toBeLessThan(block.indexOf("event.preventDefault();"));
+    expect(source).toContain("isCanvasTextEditingElement(target) || isCanvasTextEditingElement(document.activeElement)");
+});
 
 test("Canvas copy shortcut yields to a real browser text selection", () => {
     expect(hasCanvasTextSelection(null)).toBe(false);
