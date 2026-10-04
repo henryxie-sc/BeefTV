@@ -1,17 +1,17 @@
 import { App, Select } from "antd";
 import { useEffect, useState } from "react";
-import { getAssistantAccountConnection, updateAssistantAccountConnection, ASSISTANT_CONNECTION_EVENT, type AssistantAccountMode, type ChatGPTConnection } from "@/services/api/agent-assistant";
+import { getChatGPTConnection, updateChatGPTConnection, ASSISTANT_CONNECTION_EVENT, type ChatGPTConnection } from "@/services/api/agent-assistant";
 import { assistantModelOptions, resolveAssistantModel } from "@/lib/assistant-model";
 import { modelDisplayName, resolveModelChannel, useConfigStore } from "@/stores/use-config-store";
 
 export function CanvasAssistantModelPicker({ busy }: { busy: boolean }) {
     const { message } = App.useApp();
-    const [connection, setConnection] = useState<(ChatGPTConnection & { mode: AssistantAccountMode }) | null>(null);
+    const [connection, setConnection] = useState<ChatGPTConnection | null>(null);
     const [switching, setSwitching] = useState(false);
     const starting = connection?.state === "starting";
     useEffect(() => {
         let disposed = false;
-        const refresh = () => { void Promise.all((["chatgpt", "gemini"] as const).map(async (mode) => ({ ...await getAssistantAccountConnection(mode), mode }))).then((values) => { if (!disposed) setConnection(values.find((value) => value.active) || null); }).catch(() => { if (!disposed) setConnection(null); }); };
+        const refresh = () => { void getChatGPTConnection().then((value) => { if (!disposed) setConnection(value); }).catch(() => { if (!disposed) setConnection(null); }); };
         refresh();
         const timer = starting ? setInterval(refresh, 1500) : undefined;
         window.addEventListener(ASSISTANT_CONNECTION_EVENT, refresh);
@@ -39,8 +39,7 @@ export function CanvasAssistantModelPicker({ busy }: { busy: boolean }) {
             onChange={(value) => {
                 if (connection?.active) {
                     setSwitching(true);
-                    const mode = connection.mode;
-                    void updateAssistantAccountConnection(mode, "connect", { model: value }).then((next) => setConnection({ ...next, mode }))
+                    void updateChatGPTConnection("connect", { model: value }).then(setConnection)
                         .catch(() => { void message.error("助手模型切换失败，请稍后重试"); })
                         .finally(() => setSwitching(false));
                     return;

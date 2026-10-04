@@ -161,26 +161,16 @@ export type ChatGPTConnection = {
 };
 
 export const ASSISTANT_CONNECTION_EVENT = "beeftv-assistant-connection-changed";
-export type AssistantAccountMode = "chatgpt" | "gemini";
-export async function getAssistantAccountConnection(mode: AssistantAccountMode): Promise<ChatGPTConnection> {
-    return http.get<ChatGPTConnection>(`/assistant/${mode}/connection`, await uiSessionConfig());
-}
-export async function updateAssistantAccountConnection(mode: AssistantAccountMode, action: "connect" | "disable" | "login" | "answer" | "cancel" | "logout", payload: Record<string, string> = {}): Promise<ChatGPTConnection> {
-    const connection = await http.post<ChatGPTConnection>(`/assistant/${mode}/${action}`, payload, await uiSessionConfig());
-    window.dispatchEvent(new Event(ASSISTANT_CONNECTION_EVENT));
-    return connection;
-}
-export async function openAssistantAccountAuthorization(mode: AssistantAccountMode): Promise<void> {
-    await http.post(`/assistant/${mode}/open`, {}, await uiSessionConfig());
-}
 export async function openChatGPTAuthorization(): Promise<void> {
-    await openAssistantAccountAuthorization("chatgpt");
+    await http.post("/assistant/chatgpt/open", {}, await uiSessionConfig());
 }
 export async function getChatGPTConnection(): Promise<ChatGPTConnection> {
-    return getAssistantAccountConnection("chatgpt");
+    return http.get<ChatGPTConnection>("/assistant/chatgpt/connection", await uiSessionConfig());
 }
 export async function updateChatGPTConnection(action: "connect" | "disable" | "login" | "answer" | "cancel" | "logout", payload: Record<string, string> = {}): Promise<ChatGPTConnection> {
-    return updateAssistantAccountConnection("chatgpt", action, payload);
+    const connection = await http.post<ChatGPTConnection>(`/assistant/chatgpt/${action}`, payload, await uiSessionConfig());
+    window.dispatchEvent(new Event(ASSISTANT_CONNECTION_EVENT));
+    return connection;
 }
 
 /** UI 会话头由页面内存里的凭据提供；助手的每条路由都走同一套认证。 */

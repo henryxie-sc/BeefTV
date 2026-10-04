@@ -285,7 +285,6 @@ export function ChannelSettingsPane({ onOpenModels, onOpenRunningHub }: ChannelS
                 </div>
             </div>
             {localMode && <ChatGPTConnection />}
-            {localMode && <ChatGPTConnection mode="gemini" />}
             {onOpenRunningHub ? (
                 <section className="settings-section mb-3">
                     <div className="mb-3">

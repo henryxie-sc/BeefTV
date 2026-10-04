@@ -71,10 +71,6 @@
 
 ## 限制
 
-- Gemini Google 账号通过钉选 `@google/gemini-cli-core@0.62.0` 的 OAuth 与 Code Assist ContentGenerator 接入；pi 0.87.1 本身已移除 Gemini CLI 登录支持。`gemini-account.mjs` 注册 provider 的 `streamSimple`，`gemini-worker.mjs` 只执行授权和单次模型请求，不创建 Gemini Agent 或运行工具循环。会话、工具执行、授权和预算仍由现有 pi 宿主持有。
-- Google 凭据保存在产品数据目录的独立 `gemini-account/.gemini` 中，通过 `GEMINI_CLI_HOME` 隔离；不读取用户现有 Gemini CLI 凭据。官方授权自动打开浏览器，通过官方 Config 与 createContentGenerator 确认 Code Assist 权限；仅持有 OAuth 凭据不算连接成功。使用真实 beeftv 客户端标识，Google 拒绝客户端时显示具体错误，不伪装其他客户端。目录中的候选模型不代表账号额度或调用权限。启动不发出模型请求，凭据刷新由官方核心包执行；额外账号验证或组织项目要求以安全错误分类提示。
-- Gemini 使用官方关闭传输重试的流式 ContentGenerator，当前桥接在完整响应到达后向 pi 发出文本和工具事件。请求预算在进入官方核心包前扣除；工具调用的 thought signature 随官方 transcript 保存并回传，避免多轮工具调用丢失签名。
-
 - ChatGPT/Codex 目录由 `codex-models.mjs` 使用 `ModelRuntime.registerProvider` 补齐 `gpt-6.1-sol`，保留全部内置模型及原生 OAuth/刷新/传输。新会话使用 `low`；历史会话的 `off` 与 `minimal` 也映射为 `low`，避免发送模型不支持的 `none`。上下文窗口沿用原生 Codex Sol 的保守额度。模型目录不代表账号调用权限。
 - ChatGPT/Codex 宿主在 SDK 导入后由 `codex-transport.mjs` 显式安装 Undici 的 `EnvHttpProxyAgent`，遵循环境 HTTP(S) 代理并直连本地业务桥。SDK 的 Undici 默认连接器会覆盖 Node 的环境代理，单独设置 `NODE_USE_ENV_PROXY` 不足以保证授权与模型请求走代理。
 - 注册 Codex 模型后等待 SDK 的本地认证状态刷新，再计算宿主就绪状态；已有账号凭据的重启不得缓存注册期间暂时的 `credential_missing`。启动验证不发出模型请求。

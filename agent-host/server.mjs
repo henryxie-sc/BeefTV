@@ -17,7 +17,6 @@ import { TURN_ENTRY_TYPE, createSessionStore } from './session-owner.mjs';
 import { createChatGPTAuth } from './chatgpt-auth.mjs';
 import { registerCodexModels } from './codex-models.mjs';
 import { configureCodexTransport } from './codex-transport.mjs';
-import { createGeminiAccount, GEMINI_MODELS, GEMINI_PROVIDER } from './gemini-account.mjs';
 
 const OPS_URL = (process.env.BEEFTV_OPS_URL || 'http://127.0.0.1:18090/api').replace(/\/+$/, '');
 const HOST_TOKEN = process.env.BEEFTV_AGENT_HOST_TOKEN || '';
@@ -47,7 +46,6 @@ const MAX_BODY_BYTES = 64 * 1024;
 const READ_ONLY_MODE = process.env.BEEFTV_AGENT_READ_ONLY === '1';
 const PROVIDER_ID = 'beeftv';
 const CHATGPT_MODE = MODEL_API === 'openai-codex-responses';
-const GEMINI_MODE = MODEL_API === 'google-account';
 if (CHATGPT_MODE) configureCodexTransport();
 
 for (const [name, value] of Object.entries({ BEEFTV_AGENT_HOST_TOKEN: HOST_TOKEN,
@@ -68,25 +66,12 @@ let MODEL = null;
 let modelRuntime = null;
 
 async function initializeModel() {
-  providerReason = CHATGPT_MODE || GEMINI_MODE ? '' : providerUnavailableReason({ modelId: MODEL_ID, baseUrl: BASE_URL, apiKey: API_KEY, api: MODEL_API });
+  providerReason = CHATGPT_MODE ? '' : providerUnavailableReason({ modelId: MODEL_ID, baseUrl: BASE_URL, apiKey: API_KEY, api: MODEL_API });
   if (providerReason) return;
   try {
     modelRuntime = await ModelRuntime.create({
       authPath: path.join(AGENT_DIR, 'auth.json'), modelsPath: null, refreshOnCreate: false,
     });
-    if (GEMINI_MODE) {
-      modelRuntime.registerProvider(GEMINI_PROVIDER, { api: 'google-generative-ai',
-        baseUrl: BASE_URL, apiKey: 'local-google-account', authHeader: false,
-        streamSimple: geminiAccount.streamSimple,
-        models: GEMINI_MODELS.map(({ id, name }) => ({ id, name, reasoning: true, input: ['text', 'image'],
-          contextWindow: 1000000, maxTokens: MAX_OUTPUT_TOKENS,
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } })),
-      });
-      await modelRuntime.refresh({ allowNetwork: false });
-      MODEL = modelRuntime.getModel(GEMINI_PROVIDER, MODEL_ID);
-      providerReason = !MODEL ? 'model_not_configured' : geminiAccount.status().connected ? '' : 'credential_missing';
-      return;
-    }
     if (CHATGPT_MODE) {
       registerCodexModels(modelRuntime);
       // Provider registration refreshes auth asynchronously. Await its local
@@ -118,26 +103,6 @@ const lifetimeBudget = createDurableRequestBudget({ limit: LIFETIME_REQUEST_BUDG
 
 const turnBudgetContext = new AsyncLocalStorage();
 
-function reserveModelRequest(origin, pathname, model) {
-  const budget = turnBudgetContext.getStore();
-  const turn = spendModelRequest(budget);
-  if (!turn.allowed) { if (budget) budget.failure = turn; throw budgetError(turn); }
-  const lifetime = lifetimeBudget.reserve();
-  if (!lifetime.allowed) {
-    if (budget) { budget.requests -= 1; budget.failure = lifetime; }
-    throw budgetError(lifetime);
-  }
-  dispatched += 1;
-  const entry = { at: new Date().toISOString(), dispatchIndex: dispatched, origin, path: pathname, model };
-  outbound.push(entry);
-  fs.appendFileSync(ledgerPath, JSON.stringify(entry) + '\n');
-}
-const geminiAccount = GEMINI_MODE ? createGeminiAccount({ dataDir: DATA_DIR,
-  getModel: () => MODEL, isBusy: () => anySessionBusy(),
-  reserveRequest: (model) => reserveModelRequest('https://cloudcode-pa.googleapis.com', '/generateContent', model),
-  onAuthenticated: async () => { providerReason = !MODEL ? 'model_not_configured' : geminiAccount.status().connected ? '' : 'credential_missing'; },
-}) : null;
-
 const BASE_ORIGIN = BASE_URL ? new URL(BASE_URL).origin : '';
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input, options = {}) => {
@@ -146,9 +111,23 @@ globalThis.fetch = async (input, options = {}) => {
   try { parsed = new URL(raw); } catch { parsed = null; }
   const isModelCall = !!BASE_ORIGIN && parsed && parsed.origin === BASE_ORIGIN;
   if (isModelCall) {
+    const budget = turnBudgetContext.getStore();
+    const turn = spendModelRequest(budget);
+    if (!turn.allowed) {
+      if (budget) budget.failure = turn;
+      throw budgetError(turn);
+    }
+    const lifetime = lifetimeBudget.reserve();
+    if (!lifetime.allowed) {
+      if (budget) { budget.requests -= 1; budget.failure = lifetime; }
+      throw budgetError(lifetime);
+    }
+    dispatched += 1;
     let bodyModel = null;
     try { bodyModel = JSON.parse(options.body || '{}').model || null; } catch { /* 非 JSON body */ }
-    reserveModelRequest(parsed.origin, parsed.pathname, bodyModel);
+    const entry = { at: new Date().toISOString(), dispatchIndex: dispatched, origin: parsed.origin, path: parsed.pathname, model: bodyModel };
+    outbound.push(entry);
+    fs.appendFileSync(ledgerPath, JSON.stringify(entry) + '\n');
   }
   return realFetch(input, options);
 };
@@ -417,7 +396,6 @@ async function shutdown() {
   shuttingDown = true;
   try {
     await chatGPTAuth?.cancel();
-    geminiAccount?.dispose();
     const released = await store.disposeAll();
     console.error(`agent-host: 关闭，释放 ${released} 个会话`);
   } catch (error) {
@@ -435,7 +413,7 @@ if (LIFETIME_STDIN) {
 }
 
 await initializeModel();
-const chatGPTAuth = GEMINI_MODE ? geminiAccount : CHATGPT_MODE && modelRuntime ? createChatGPTAuth({ runtime: modelRuntime,
+const chatGPTAuth = CHATGPT_MODE && modelRuntime ? createChatGPTAuth({ runtime: modelRuntime,
   isBusy: anySessionBusy, getModel: () => MODEL,
   onAuthenticated: async () => {
     providerReason = !MODEL ? 'model_not_configured' : modelRuntime.hasConfiguredAuth('openai-codex') ? '' : 'credential_missing';
