@@ -19,7 +19,8 @@ import { navigateToSettings } from "@/lib/settings-navigation";
 import type { Skill } from "@/services/api/skills";
 import { skillRuntime } from "@/services/skill-runtime";
 import type { GenerationTask } from "@/services/api/task-center";
-import { useConfigStore, useEffectiveConfig, resolveModelRequestConfig } from "@/stores/use-config-store";
+import { configureGeminiYouTubeProtocol, youtubeReferencesForPrompt, youtubeVideoLinksInPrompt } from "@/services/api/youtube";
+import { useConfigStore, useEffectiveConfig, resolveModelChannel, resolveModelRequestConfig } from "@/stores/use-config-store";
 import { seedanceReferenceRatioWarning } from "@/lib/seedance-channel-warning";
 import type { Asset } from "@/stores/use-asset-store";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/types/canvas";
@@ -168,7 +169,7 @@ export function useCanvasGenerationExecutor({
                     // AutoDL/其他声明式视频协议需要结构化参考素材；只有普通
                     // 模型视频接口才把提示词视为纯文本输入。
                     const usesWorkflowProvider = Boolean(mode !== "text" && generationConfig.taskWorkflowProvider && generationConfig.taskWorkflowProvider !== "model");
-                    // 普通视频协议只保留输入框文本（显式 @文本 引用仍会展开为真实内容）；声明式工作流还要保留连接媒体。
+                    // 视频生成会把连线文本正文并入提示词；普通模型与声明式工作流仍按各自协议整理图片等媒体。
                     const promptOnly = mode === "video" && !usesWorkflowProvider;
                     try {
                         const baseContext = buildNodeGenerationContext(
@@ -217,12 +218,37 @@ export function useCanvasGenerationExecutor({
                             return;
                         }
                     }
+                    let generationContext = { ...rawGenerationContext, prompt: effectivePrompt };
+                    if (mode === "text") {
+                        const youtubeLinks = youtubeVideoLinksInPrompt(effectivePrompt);
+                        if (youtubeLinks.length) {
+                            if (youtubeLinks.length > 10) {
+                                message.error("Gemini 单次最多直接读取 10 个 YouTube 视频链接，请拆分后分别分析");
+                                return;
+                            }
+                            const selected = resolveModelRequestConfig(generationConfig, generationConfig.model);
+                            const channel = resolveModelChannel(generationConfig, generationConfig.model);
+                            const geminiConfig = configureGeminiYouTubeProtocol(generationConfig, channel, selected.interfaceType);
+                            if (!geminiConfig) {
+                                message.error("YouTube 视频链接直读需要 Google Gemini generateContent 文本协议，请切换到 Gemini 原生渠道");
+                                return;
+                            }
+                            generationConfig = geminiConfig;
+                            const directInput = youtubeReferencesForPrompt(effectivePrompt, youtubeLinks);
+                            effectivePrompt = directInput.prompt;
+                            generationContext = {
+                                ...generationContext,
+                                prompt: effectivePrompt,
+                                referenceVideos: [...generationContext.referenceVideos, ...directInput.references],
+                            };
+                        }
+                    }
                     const promptLengthError = mode === "video" ? modelPromptLengthError(generationConfig, generationConfig.model, mode, effectivePrompt) : "";
                     if (promptLengthError) {
                         message.error(promptLengthError);
                         return;
                     }
-                    const generationContext = { ...rawGenerationContext, prompt: effectivePrompt };
+                    generationContext = { ...generationContext, prompt: effectivePrompt };
                     if ((options?.retryContext || sourceNode?.metadata?.failedInputFingerprint || sourceNode?.metadata?.failedPromptFingerprint) && canvasGenerationRetryBlocked(sourceNode?.metadata, { ...generationContext, mode })) {
                         message.warning(sourceNode?.metadata?.errorDetails || "请先查看失败原因并调整输入，再重新生成");
                         return;

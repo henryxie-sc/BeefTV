@@ -717,9 +717,6 @@ func CloneStringAnyMap(value map[string]interface{}) map[string]interface{} {
 }
 
 func RunTextTask(ctx context.Context, input Input) (map[string]interface{}, error) {
-	if _, ok := DeclarativeProtocolAdapterForContext(ctx, input.Config.InterfaceType); ok {
-		return RunDeclarativeProtocolTask(ctx, input)
-	}
 	switch input.Config.InterfaceType {
 	case "chat-completion":
 		return RunChatCompletionsTextTask(ctx, input)
@@ -727,6 +724,9 @@ func RunTextTask(ctx context.Context, input Input) (map[string]interface{}, erro
 		return RunResponsesTextTask(ctx, input)
 	case string(model.ChannelInterfaceClaudeAPI):
 		return RunClaudeTextTask(ctx, input)
+	}
+	if _, ok := DeclarativeProtocolAdapterForContext(ctx, input.Config.InterfaceType); ok {
+		return RunDeclarativeProtocolTask(ctx, input)
 	}
 	return RunLegacyTextTask(ctx, input)
 }

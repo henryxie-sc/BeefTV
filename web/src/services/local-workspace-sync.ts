@@ -8,11 +8,48 @@ import {
     type WorkspaceAssetLibraryPageOptions,
 } from "@/services/workspace-asset-read";
 import { flushCanvasStorePersistence, useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-store";
+import { queryGenerationTask } from "@/services/api/task-center";
+import { generationEffectApplied } from "@/services/generation-consumer-dedupe";
+import { attachNodeEffectKey } from "@/services/generation-task-materializer";
+import { CanvasNodeType } from "@/types/canvas";
 
 export { isLocalWorkspaceMode } from "@/services/workspace-mode";
 
 let operationTail: Promise<void> = Promise.resolve();
 const canvasRefreshListeners = new Set<(project: CanvasProject, previous: CanvasProject | undefined) => void>();
+const repairingTextTasks = new Set<string>();
+
+async function repairCompletedTextResults(projectId: string) {
+    const project = openLocalCanvasProject(projectId);
+    if (!project) return;
+    const candidates = project.nodes.filter((node) => node.type === CanvasNodeType.Text && node.metadata?.taskId
+        && node.metadata.taskStatus === "succeeded"
+        && !generationEffectApplied(node.metadata, attachNodeEffectKey(node.metadata.taskId, node.id, 0)));
+    if (!candidates.length) return;
+    const { applyRecoveredGenerationTaskResultToNodes } = await import("@/lib/canvas/canvas-generation-task-sync");
+    const { persistCanvasGenerationEffect } = await import("@/services/canvas-generation-consumer");
+    for (const candidate of candidates) {
+        const taskId = candidate.metadata!.taskId!;
+        const key = `${projectId}:${taskId}`;
+        if (repairingTextTasks.has(key)) continue;
+        repairingTextTasks.add(key);
+        try {
+            const task = await queryGenerationTask(taskId);
+            if (task.projectId !== projectId || task.status !== "succeeded" || task.type !== "canvas_text") continue;
+            const before = openLocalCanvasProject(projectId);
+            const node = before?.nodes.find((item) => item.id === candidate.id);
+            if (!before || node?.metadata?.taskId !== taskId || generationEffectApplied(node.metadata || {}, attachNodeEffectKey(taskId, candidate.id, 0))) continue;
+            const applied = await applyRecoveredGenerationTaskResultToNodes(before.nodes, task, candidate.id);
+            if (!applied.updated) continue;
+            const persisted = await persistCanvasGenerationEffect({ projectId, effectKey: applied.effectKey, previousNodes: before.nodes, nodes: applied.nodes });
+            canvasRefreshListeners.forEach((listener) => listener(persisted, before));
+        } catch (error) {
+            console.warn("已完成文本任务的画布结果恢复失败", { projectId, taskId, error });
+        } finally {
+            repairingTextTasks.delete(key);
+        }
+    }
+}
 
 /**
  * Backward-compatible local persistence facade.
@@ -45,6 +82,9 @@ export async function loadCanvasProjectForEditing(
     }
     const project = await openLocalCanvasProjectFromBackend(id, expected);
     if (project) options.onLoad?.(project);
+    if (project) void repairCompletedTextResults(id).catch((error) => {
+        console.warn("已完成文本任务的画布结果恢复未启动", { projectId: id, error });
+    });
     return project || undefined;
 }
 

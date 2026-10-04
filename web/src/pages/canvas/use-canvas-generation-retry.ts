@@ -114,7 +114,7 @@ export function useCanvasGenerationRetry({
             const retryContextPrompt = retryMode === "image" && sourceNode.metadata?.portraitTexture ? buildPortraitTexturePrompt(retryPromptSource, sourceNode.metadata.portraitTexture) : retryPromptSource;
             let rawContext: Awaited<ReturnType<typeof hydrateNodeGenerationContext>> | null;
             try {
-                const promptOnly = retryMode === "video";
+                const promptOnly = retryMode === "video" && (!generationConfig.taskWorkflowProvider || generationConfig.taskWorkflowProvider === "model");
                 if (useStoredSource) rawContext = null;
                 else {
                     const baseContext = buildNodeGenerationContext(sourceNode.id, nodesRef.current, connectionsRef.current, retryContextPrompt, assets, promptOnly);

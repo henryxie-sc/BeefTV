@@ -8,6 +8,7 @@ import { bindCanvasTaskOutput, type CanvasTaskBindReceipt } from "@/services/api
 import type { GenerationTask, GenerationTaskOutput } from "@/services/api/task-center";
 import { CanvasBackendSubmitPausedError, CanvasStaleScopeError, isCanvasRevisionConflict } from "@/services/canvas-revision-conflict";
 import { generationEffectApplied } from "@/services/generation-consumer-dedupe";
+import { isLocalWorkspaceMode } from "@/services/workspace-mode";
 import { attachNodeEffectKey } from "@/services/generation-task-materializer";
 import { persistCanvasDocument } from "@/services/local-workspace-repository";
 import { hydrateBackendGeneratedOutputs } from "@/services/project-asset-sync";
@@ -27,7 +28,7 @@ import {
     withCanvasStorePersistenceSuppressed,
     type CanvasProject,
 } from "@/stores/canvas/use-canvas-store";
-import type { CanvasAssistantSession, CanvasConnection, CanvasNodeData } from "@/types/canvas";
+import { CanvasNodeType, type CanvasAssistantSession, type CanvasConnection, type CanvasNodeData } from "@/types/canvas";
 
 function throwIfAborted(signal?: AbortSignal) {
     if (signal?.aborted) throw new DOMException("The operation was aborted", "AbortError");
@@ -577,6 +578,73 @@ function rebaseCommittedCanvasGenerationOntoLiveProject(scope: string, projectId
     }).document.state.projects.find((project) => project.id === projectId);
 }
 
+async function persistLocalCanvasGenerationEffect(input: CanvasGenerationEffectInput, delta: ReturnType<typeof generationProjectDelta>, scope: string) {
+    throwIfAborted(input.signal);
+    if (getActiveUserScope() !== scope) throw new Error("账号已切换，无法写入生成结果");
+    const current = useCanvasStore.getState().projects.find((project) => project.id === input.projectId);
+    if (!current) throw new Error("画布项目不存在，无法持久化生成副作用");
+
+    const previousById = new Map((input.previousNodes || []).map((node) => [node.id, node]));
+    const changed = (input.nodes || []).filter((node) => JSON.stringify(previousById.get(node.id)) !== JSON.stringify(node));
+    const completedTextNode = changed.length === 1 && changed[0]?.type === CanvasNodeType.Text && generationEffectApplied(changed[0].metadata || {}, input.effectKey)
+        && !input.connections && !input.chatSessions ? changed[0] : undefined;
+    if (completedTextNode) {
+        const liveNode = current.nodes.find((node) => node.id === completedTextNode.id) ?? previousById.get(completedTextNode.id);
+        if (!liveNode) throw new Error("画布中找不到对应文本节点");
+        const completedNode: CanvasNodeData = {
+            ...liveNode,
+            type: CanvasNodeType.Text,
+            metadata: {
+                ...liveNode.metadata,
+                ...completedTextNode.metadata,
+                generationEffectKeys: [...new Set([...(liveNode.metadata?.generationEffectKeys || []), ...(completedTextNode.metadata?.generationEffectKeys || [])])],
+            },
+        };
+        const nodes = current.nodes.some((node) => node.id === completedNode.id)
+            ? current.nodes.map((node) => node.id === completedNode.id ? completedNode : node)
+            : [...current.nodes, completedNode];
+        useCanvasStore.getState().updateProject(input.projectId, { nodes });
+        const { syncLocalCanvasGeneratedTextNodeToBackend } = await import("@/services/local-workspace-repository");
+        await syncLocalCanvasGeneratedTextNodeToBackend(input.projectId, completedNode, input.effectKey);
+        return useCanvasStore.getState().projects.find((project) => project.id === input.projectId) ?? { ...current, nodes };
+    }
+
+    // The Go repository is the desktop source of truth. A recent node can be
+    // present in the editor and SQLite while the IndexedDB cache still lacks it.
+    // Rebase against the live project and restore only nodes changed by this
+    // effect from the editor's pre-generation snapshot.
+    const currentNodeIds = new Set(current.nodes.map((node) => node.id));
+    const changedNodes = new Set((input.nodes || [])
+        .filter((node) => generationEffectApplied(node.metadata || {}, input.effectKey))
+        .map((node) => node.id));
+    const liveNodes = [...current.nodes, ...(input.previousNodes || []).filter((node) => changedNodes.has(node.id) && !currentNodeIds.has(node.id))];
+    const liveProject = { ...current, nodes: liveNodes };
+    const baseProject = { ...delta.baseProject, revision: current.revision };
+    const localProject = { ...delta.localProject, revision: current.revision };
+    const rebased = rebaseCanvasProjects({
+        document: parseCanvasStorageDocument(null, [liveProject]),
+        baseProjects: [baseProject],
+        localProjects: [localProject],
+        baseRevision: 0,
+    });
+    if (rebased.conflicts.length) throw new Error("画布生成副作用与并发修改冲突");
+    const merged = rebased.document.state.projects.find((project) => project.id === input.projectId);
+    if (!merged) throw new Error("画布项目不存在，无法持久化生成副作用");
+    if ([...changedNodes].some((nodeId) => !merged.nodes.some((node) => node.id === nodeId && generationEffectApplied(node.metadata || {}, input.effectKey)))) {
+        throw new Error("生成结果未能合并到画布节点");
+    }
+    throwIfAborted(input.signal);
+    useCanvasStore.getState().updateProject(input.projectId, {
+        nodes: merged.nodes,
+        connections: merged.connections,
+        chatSessions: merged.chatSessions,
+        activeChatId: merged.activeChatId,
+    });
+    const { syncLocalCanvasGenerationProjectToBackend } = await import("@/services/local-workspace-repository");
+    await syncLocalCanvasGenerationProjectToBackend(input.projectId);
+    return useCanvasStore.getState().projects.find((project) => project.id === input.projectId) ?? merged;
+}
+
 export async function persistCanvasGenerationEffect(input: CanvasGenerationEffectInput) {
     throwIfAborted(input.signal);
     const scope = getActiveUserScope();
@@ -593,6 +661,7 @@ export async function persistCanvasGenerationEffect(input: CanvasGenerationEffec
 
     const delta = generationProjectDelta(input, memoryProject);
     if (!delta.stamped) throw new Error("生成副作用缺少持久幂等标记");
+    if (isLocalWorkspaceMode()) return persistLocalCanvasGenerationEffect(input, delta, scope);
 
     const unregisterAttempt = registerCanvasGenerationPersistenceAttempt(scope, input.projectId, input.effectKey, {
         previousNodes: input.previousNodes,

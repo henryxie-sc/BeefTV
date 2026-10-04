@@ -422,6 +422,7 @@ func (a manifestAdapter) BuildCreate(_ context.Context, c RequestContext) (Reque
 	if a.manifest.Metadata.ID == "volcengine-ark-seedance" || a.manifest.Metadata.ID == "volcengine-ark-video" || a.manifest.Metadata.ID == "volcengine-ark-agent-plan-video" || a.manifest.Metadata.ID == "seedance-videos-compatible" {
 		c.Request = NormalizeSeedanceTaskOptions(c.Request)
 	}
+	c.Request = normalizeManifestWorkflowResolution(a.manifest, c.Request)
 	if len(a.manifest.Contributes.Providers) == 0 {
 		return RequestSpec{}, fmt.Errorf("plugin %s does not provide a provider", a.manifest.Metadata.ID)
 	}
@@ -1152,6 +1153,106 @@ func manifestModelID(request GenerationRequest) string {
 		modelID = modelID[separator+2:]
 	}
 	return strings.ToLower(modelID)
+}
+
+// Workflow enums can combine a resolution tier with its orientation; recover
+// that exact value when the canvas sends only a tier and an aspect ratio.
+func normalizeManifestWorkflowResolution(manifest Manifest, request GenerationRequest) GenerationRequest {
+	if request.Capability != CapabilityVideo || strings.TrimSpace(request.Resolution) == "" {
+		return request
+	}
+	modelID := manifestModelID(request)
+	for _, workflow := range manifest.Contributes.Workflows {
+		if strings.ToLower(strings.TrimSpace(workflow.ID)) != modelID || workflow.Capability != CapabilityVideo {
+			continue
+		}
+		if providerID := strings.TrimSpace(workflow.ProviderID); providerID != "" && !strings.EqualFold(providerID, manifest.Metadata.ID) {
+			continue
+		}
+		for _, parameter := range workflow.Parameters {
+			if !strings.EqualFold(strings.TrimSpace(parameter.Name), "resolution") || len(parameter.Values) == 0 {
+				continue
+			}
+			for _, option := range parameter.Values {
+				if strings.EqualFold(strings.TrimSpace(option), strings.TrimSpace(request.Resolution)) {
+					request.Resolution = strings.TrimSpace(option)
+					return request
+				}
+			}
+			tier := videoResolutionTier(request.Resolution)
+			orientation := videoAspectOrientation(request.AspectRatio)
+			if tier == "" || orientation == "" {
+				return request
+			}
+			for _, option := range parameter.Values {
+				if videoResolutionTier(option) == tier && videoResolutionOptionOrientation(option) == orientation {
+					request.Resolution = strings.TrimSpace(option)
+					return request
+				}
+			}
+			return request
+		}
+	}
+	return request
+}
+
+func videoResolutionTier(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	index := 0
+	for index < len(value) && value[index] >= '0' && value[index] <= '9' {
+		index++
+	}
+	if index == 0 {
+		return ""
+	}
+	return value[:index]
+}
+
+func videoAspectOrientation(value string) string {
+	value = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(value, "×", "x")))
+	if strings.Contains(value, "1:1") || strings.Contains(value, "square") || strings.Contains(value, "正方") {
+		return "square"
+	}
+	if strings.Contains(value, "竖") || strings.Contains(value, "portrait") || strings.Contains(value, "vertical") {
+		return "portrait"
+	}
+	if strings.Contains(value, "横") || strings.Contains(value, "landscape") || strings.Contains(value, "horizontal") {
+		return "landscape"
+	}
+	separator := ":"
+	if !strings.Contains(value, separator) {
+		separator = "x"
+	}
+	parts := strings.Split(value, separator)
+	if len(parts) != 2 {
+		return ""
+	}
+	width, widthErr := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+	height, heightErr := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	if widthErr != nil || heightErr != nil || width <= 0 || height <= 0 {
+		return ""
+	}
+	if width == height {
+		return "square"
+	}
+	if width < height {
+		return "portrait"
+	}
+	return "landscape"
+}
+
+func videoResolutionOptionOrientation(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if strings.Contains(value, "1:1") || strings.Contains(value, "square") || strings.Contains(value, "正方") {
+		return "square"
+	}
+	if strings.Contains(value, "竖") || strings.Contains(value, "portrait") || strings.Contains(value, "vertical") {
+		return "portrait"
+	}
+	if strings.Contains(value, "横") || strings.Contains(value, "landscape") || strings.Contains(value, "horizontal") {
+		return "landscape"
+	}
+	return ""
 }
 
 func manifestMediaValues(values []MediaReference) []any {

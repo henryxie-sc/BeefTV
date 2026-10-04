@@ -175,10 +175,22 @@ add({
 add({
   id: "google-gemini-generate-content", providerId: "gemini-generate-content", name: "Google Gemini generateContent", vendor: "Google", capability: "text",
   baseUrl: "https://generativelanguage.googleapis.com", auth: { type: "google-api-key", field: "apiKey" }, params: textParams,
+  notes: "支持通过 Gemini 原生 fileData.fileUri 输入公开 YouTube 视频链接；私有视频、非公开视频和任意普通媒体 URL 不属于此视频输入方式。",
   create: jsonCreate("/v1beta/models/{{model}}:generateContent", {
     contents: map(filter(ref("request.messages"), "message", ne(ref("message.role"), "system")), "message", {
       role: conditional(eq(ref("message.role"), "assistant"), "model", "user"),
-      parts: [{ text: ref("message.content") }]
+      parts: coalesce(
+        map(ref("message.content"), "part", conditional(
+          eq(ref("part.type"), "text"),
+          { text: ref("part.text") },
+          conditional(eq(ref("part.type"), "video_url"), conditional(
+            eq(lower(first(split(ref("part.video_url.url"), ":"))), "data"),
+            { inlineData: { mimeType: { $dataMime: ref("part.video_url.url") }, data: { $dataPayload: ref("part.video_url.url") } } },
+            { fileData: { fileUri: ref("part.video_url.url") } }
+          ))
+        )),
+        [{ text: ref("message.content") }]
+      )
     }),
     systemInstruction: conditional(ref("request.instructions"), { parts: [{ text: ref("request.instructions") }] }),
     generationConfig: omit(ref("request.providerOptions.gemini-generate-content.generationConfig")),

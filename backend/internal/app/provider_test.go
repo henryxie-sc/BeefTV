@@ -788,6 +788,48 @@ data: [DONE]
 	}
 }
 
+func TestRunTextTaskUsesStreamingPathForDeclarativeChatCompletion(t *testing.T) {
+	t.Setenv("CANVAS_ALLOW_PRIVATE_UPSTREAMS", "true")
+	registry := loadOfficialFallbackRegistry()
+	adapter, ok := registry.Resolve("chat-completion")
+	if !ok || adapter.Metadata().Execution != "declarative" {
+		t.Fatal("official chat-completion declarative adapter is required for this regression test")
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		if body["stream"] != true {
+			t.Errorf("stream = %#v, want true", body["stream"])
+		}
+		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"SSE 正常\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	stream := true
+	result, err := runTextTask(withProtocolRegistry(context.Background(), registry), canvasGenerationInput{
+		Mode:        "text",
+		Prompt:      "test",
+		StreamText:  true,
+		TextOptions: canvasTextOptions{Stream: &stream},
+		Config: providerConfig{
+			BaseURL: server.URL + "/v1", APIKey: "test-key", Model: "test-model",
+			APIFormat: "openai", InterfaceType: "chat-completion",
+		},
+	})
+	if err != nil {
+		t.Fatalf("runTextTask() error = %v", err)
+	}
+	if result["text"] != "SSE 正常" {
+		t.Fatalf("text = %#v", result["text"])
+	}
+}
+
 func TestTextThinkingOptionsAndReasoningParsing(t *testing.T) {
 	input := canvasGenerationInput{TextOptions: canvasTextOptions{Thinking: true}}
 	responsesBody := map[string]interface{}{}

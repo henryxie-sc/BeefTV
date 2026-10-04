@@ -9,6 +9,8 @@ import { canvasBackendSubmitPaused, CanvasBackendSubmitPausedError, CanvasStaleS
 import { CanvasJournalError, clearCanvasOperationJournal, clearCanvasPendingProjection, loadCanvasOperationJournal, newCanvasCommitOperationId, peekCanvasOperationJournal, recordConfirmedCanvasCommit, updateCanvasOperationJournal } from "@/services/canvas-operation-journal";
 import { useAssetStore, type Asset } from "@/stores/use-asset-store";
 import { isLocalWorkspaceMode } from "@/services/workspace-mode";
+import type { CanvasNodeData } from "@/types/canvas";
+import { generationEffectApplied } from "@/services/generation-consumer-dedupe";
 import { getActiveUserScope } from "@/lib/user-scope";
 import { captureUserScope, isUserScopeAbandonedError, userScopeMatches, type CapturedUserScope } from "@/lib/user-scope-guard";
 import { sameCanvasDocument } from "@/lib/canvas/canvas-content";
@@ -305,6 +307,16 @@ export function selectPreferredCanvasProject(local: CanvasProject | null | undef
         return local;
     }
     if (sameCanvasDocument(local, backend)) return backend;
+    const localRevision = local.revision ?? 0;
+    const backendRevision = backend.revision ?? 0;
+    if (backendRevision !== localRevision) return backendRevision > localRevision ? backend : local;
+    const localNodeIds = new Set(local.nodes.map((node) => node.id));
+    const backendNodeIds = new Set(backend.nodes.map((node) => node.id));
+    if (backend.nodes.length > local.nodes.length && local.nodes.every((node) => backendNodeIds.has(node.id))) return backend;
+    if (local.nodes.length > backend.nodes.length && backend.nodes.every((node) => localNodeIds.has(node.id))) return local;
+    const localUpdatedAt = Date.parse(local.updatedAt) || 0;
+    const backendUpdatedAt = Date.parse(backend.updatedAt) || 0;
+    if (backendUpdatedAt !== localUpdatedAt) return backendUpdatedAt > localUpdatedAt ? backend : local;
     return local;
 }
 
@@ -754,6 +766,28 @@ export async function adoptServerConfirmedGenerationPatch(project: CanvasProject
     });
 }
 
+export function syncLocalCanvasGeneratedTextNodeToBackend(id: string, completedNode: CanvasNodeData, effectKey: string): Promise<void> {
+    const expected = captureUserScope();
+    const current = openLocalCanvasProject(id);
+    if (!current) throw new Error("画布项目不存在，无法保存生成文本");
+    const liveNode = current.nodes.find((candidate) => candidate.id === completedNode.id);
+    const metadata = {
+        ...liveNode?.metadata,
+        ...completedNode.metadata,
+        generationEffectKeys: [...new Set([
+            ...(liveNode?.metadata?.generationEffectKeys || []),
+            ...(completedNode.metadata?.generationEffectKeys || []),
+        ])],
+    };
+    const node = { ...completedNode, ...liveNode, metadata };
+    const nodes = current.nodes.some((candidate) => candidate.id === node.id)
+        ? current.nodes.map((candidate) => candidate.id === node.id ? node : candidate)
+        : [...current.nodes, node];
+    if (!generationEffectApplied(metadata, effectKey)) throw new Error("生成文本尚未完成，未写入画布");
+    useCanvasStore.getState().updateProject(id, { nodes });
+    return syncLocalCanvasProjectToBackend(id, expected);
+}
+
 export function scheduleLocalCanvasBackendSync(id: string) {
     const expected = captureUserScope();
     const key = saveKey(expected.userScope, id);
@@ -867,7 +901,11 @@ export async function openLocalCanvasProjectFromBackend(id: string, expectedScop
                 ? state.projects.map((item) => item.id === id ? project : item)
                 : [...state.projects, project],
         }));
-        await flushCanvasStorePersistence();
+        // IndexedDB is a cache. Its WebKit transaction may stall even after
+        // the Go repository has returned the current project.
+        void flushCanvasStorePersistence().catch((error) => {
+            console.error("画布本地缓存写入失败，已从桌面数据库打开项目", { id, error });
+        });
         return project;
     } catch (error) {
         if (isUserScopeAbandonedError(error) || error instanceof CanvasStaleScopeError) return openLocalCanvasProject(id);
