@@ -30,7 +30,7 @@ func (h *Host) buildEnv(provider assistant.Provider, pin childPin) []string {
 	set("BEEFTV_AGENT_HOST_TOKEN", h.hostToken())
 	set("BEEFTV_AGENT_DESKTOP_TOKEN", pin.DesktopTok)
 	set("BEEFTV_AGENT_API_KEY", provider.APIKey)
-	if provider.Protocol == "openai-codex" {
+	if provider.Protocol == "openai-codex" || provider.Protocol == "google-account" {
 		// Node fetch does not follow HTTP(S)_PROXY unless explicitly enabled.
 		// Keep the authenticated local operation bridge outside the proxy.
 		set("NODE_USE_ENV_PROXY", "1")
@@ -153,6 +153,8 @@ func envHasKey(env []string, key string) bool {
 // hostAPI 把渠道协议映射成 pi-ai 的 API 适配器名；宿主按它构造模型定义。
 func hostAPI(protocol string) string {
 	switch protocol {
+	case "google-account":
+		return "google-account"
 	case "openai-codex":
 		return "openai-codex-responses"
 	case "claude-api":
@@ -169,7 +171,7 @@ func hostAPI(protocol string) string {
 // Anthropic SDK 自己拼 /v1/messages，所以要去掉 /v1。渠道配置里两种写法都可能出现。
 func hostBaseURL(baseURL, protocol string) string {
 	trimmed := strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	if protocol == "openai-codex" {
+	if protocol == "openai-codex" || protocol == "google-account" {
 		return trimmed
 	}
 	if trimmed == "" {

@@ -5,9 +5,14 @@ import { mkdtemp, rm, stat, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-for (const connected of [false, true]) test(`real pinned SDK restores login=${connected}, protects OAuth metadata and dispatches zero model requests`, { timeout: 15000 }, async () => {
+for (const mode of ['chatgpt', 'gemini']) for (const connected of [false, true]) test(`real pinned SDK ${mode} restores login=${connected}, protects OAuth metadata and dispatches zero model requests`, { timeout: 15000 }, async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'beeftv-chatgpt-test-'));
-  if (connected) {
+  const modelId = mode === 'gemini' ? 'gemini-2.5-pro' : 'gpt-6.1-sol';
+  if (connected && mode === 'gemini') {
+    await mkdir(path.join(dir, 'gemini-account/.gemini'), { recursive: true });
+    await writeFile(path.join(dir, 'gemini-account/.gemini/oauth_creds.json'), JSON.stringify({ access_token: 'test-only-access', refresh_token: 'test-only-refresh' }), { mode: 0o600 });
+    await writeFile(path.join(dir, 'gemini-account/entitlement.json'), JSON.stringify({ connected: true }), { mode: 0o600 });
+  } else if (connected) {
     await mkdir(path.join(dir, 'pi-agent'));
     await writeFile(path.join(dir, 'pi-agent/auth.json'), JSON.stringify({ 'openai-codex': {
       type: 'oauth', access: 'test-only-access', refresh: 'test-only-refresh',
@@ -17,8 +22,8 @@ for (const connected of [false, true]) test(`real pinned SDK restores login=${co
   const child = spawn(process.execPath, [new URL('./server.mjs', import.meta.url).pathname], { env: {
     ...process.env, BEEFTV_AGENT_PORT: '0', BEEFTV_AGENT_LISTEN_FD: '', BEEFTV_AGENT_DATA_DIR: dir,
     BEEFTV_AGENT_HOST_TOKEN: 'test-only-host-token', BEEFTV_AGENT_INSTANCE_NONCE: 'test-only-nonce',
-    BEEFTV_AGENT_MODEL: 'gpt-6.1-sol', BEEFTV_AGENT_API: 'openai-codex-responses',
-    BEEFTV_AGENT_BASE_URL: 'https://chatgpt.com/backend-api', BEEFTV_AGENT_API_KEY: '',
+    BEEFTV_AGENT_MODEL: modelId, BEEFTV_AGENT_API: mode === 'gemini' ? 'google-account' : 'openai-codex-responses',
+    BEEFTV_AGENT_BASE_URL: mode === 'gemini' ? 'https://cloudcode-pa.googleapis.com' : 'https://chatgpt.com/backend-api', BEEFTV_AGENT_API_KEY: '',
     BEEFTV_OPS_URL: 'http://127.0.0.1:1/api', BEEFTV_AGENT_LIFETIME_STDIN: '0',
   }, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';
@@ -32,9 +37,9 @@ for (const connected of [false, true]) test(`real pinned SDK restores login=${co
     assert.equal((await fetch(`${base}/oauth/status`)).status, 403);
     const status = await (await fetch(`${base}/oauth/status`, { headers })).json();
     assert.equal(status.active, true); assert.equal(status.connected, connected);
-    assert.equal(status.model, 'gpt-6.1-sol');
-    assert.ok(status.models.some((model) => model.id === 'gpt-6.1-sol'));
-    assert.ok(status.models.some((model) => model.id === 'gpt-6-astra'));
+    assert.equal(status.model, modelId);
+    assert.ok(status.models.some((model) => model.id === modelId));
+    assert.ok(status.models.some((model) => model.id === (mode === 'gemini' ? 'gemini-3.5-flash' : 'gpt-6-astra')));
     const health = await (await fetch(`${base}/health`, { headers })).json();
     assert.equal(health.reason, connected ? undefined : 'credential_missing');
     assert.equal(health.ok, connected);

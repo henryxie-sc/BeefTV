@@ -3,6 +3,7 @@ package handler
 import (
 	"infinite-canvas/backend/internal/agentops"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -12,14 +13,17 @@ func TestChatGPTConnectionIsExclusiveToProductUISession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/assistant/chatgpt/connection", "/assistant/chatgpt/connect", "/assistant/chatgpt/login", "/assistant/chatgpt/answer", "/assistant/chatgpt/cancel", "/assistant/chatgpt/logout", "/assistant/chatgpt/open", "/assistant/chatgpt/disable"} {
-		method := http.MethodPost
-		if path == "/assistant/chatgpt/connection" {
-			method = http.MethodGet
-		}
-		response := env.callWithHeaders(t, method, path, "{}", map[string]string{"X-Beeftv-Client": reg.ID, "Authorization": "Bearer " + token})
-		if response.Code != 403 {
-			t.Fatalf("external client reached %s: %d", path, response.Code)
+	for _, mode := range []string{"chatgpt", "gemini"} {
+		for _, action := range []string{"connection", "connect", "login", "answer", "cancel", "logout", "open", "disable"} {
+			path := "/assistant/" + mode + "/" + action
+			method := http.MethodPost
+			if strings.HasSuffix(path, "/connection") {
+				method = http.MethodGet
+			}
+			response := env.callWithHeaders(t, method, path, "{}", map[string]string{"X-Beeftv-Client": reg.ID, "Authorization": "Bearer " + token})
+			if response.Code != 403 {
+				t.Fatalf("external client reached %s: %d", path, response.Code)
+			}
 		}
 	}
 	response := env.call(t, http.MethodGet, "/assistant/chatgpt/connection", "")

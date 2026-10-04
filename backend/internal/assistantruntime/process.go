@@ -238,7 +238,7 @@ func (s *supervisor) startOwned(config HostConfig, fingerprint string, timeout t
 	if timeout <= 0 {
 		timeout = defaultReadyTimeout
 	}
-	if err := waitChildReady(baseURL, nonce, token, timeout, done, config.AuthMode == "chatgpt"); err != nil {
+	if err := waitChildReady(baseURL, nonce, token, timeout, done, config.AuthMode == "chatgpt" || config.AuthMode == "gemini"); err != nil {
 		s.mu.Lock()
 		s.lastErr = err
 		s.mu.Unlock()

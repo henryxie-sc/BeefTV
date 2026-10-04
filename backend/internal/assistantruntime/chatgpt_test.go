@@ -47,6 +47,21 @@ func TestChatGPTProviderUsesSDKAuthWithoutChannelAPIKey(t *testing.T) {
 	}
 }
 
+func TestGeminiProviderUsesGoogleAccountWithoutChannelAPIKey(t *testing.T) {
+	host := New(Options{DataDir: t.TempDir()})
+	if err := host.WriteConfig(HostConfig{AuthMode: "gemini", Model: "gemini-2.5-pro"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("BEEFTV_AGENT_API_KEY", "unrelated-channel-secret")
+	provider, reason := host.ResolveProvider()
+	if reason != "" || provider.APIKey != "" || provider.Protocol != "google-account" {
+		t.Fatal("Google account must not use channel credentials")
+	}
+	if hostAPI(provider.Protocol) != "google-account" || hostBaseURL(provider.BaseURL, provider.Protocol) != "https://cloudcode-pa.googleapis.com" {
+		t.Fatal("Google protocol and endpoint must be preserved")
+	}
+}
+
 func TestChatGPTEnvEnablesProxyAndBypassesLocalOperationBridge(t *testing.T) {
 	host := New(Options{DataDir: t.TempDir(), Environ: func() []string {
 		return []string{"HTTPS_PROXY=http://127.0.0.1:7897", "no_proxy=example.test", "NODE_USE_ENV_PROXY=0"}
