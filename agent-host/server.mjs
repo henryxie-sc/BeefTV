@@ -74,6 +74,9 @@ async function initializeModel() {
     });
     if (CHATGPT_MODE) {
       registerCodexModels(modelRuntime);
+      // Provider registration refreshes auth asynchronously. Await its local
+      // snapshot before caching readiness for a previously logged-in account.
+      await modelRuntime.refresh({ allowNetwork: false });
       MODEL = modelRuntime.getModel('openai-codex', MODEL_ID);
       providerReason = !MODEL ? 'model_not_configured' : modelRuntime.hasConfiguredAuth('openai-codex') ? '' : 'credential_missing';
       return;

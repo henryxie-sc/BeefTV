@@ -1,12 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { mkdtemp, rm, stat, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-test('real pinned SDK starts without API key, protects OAuth metadata and dispatches zero model requests', { timeout: 15000 }, async () => {
+for (const connected of [false, true]) test(`real pinned SDK restores login=${connected}, protects OAuth metadata and dispatches zero model requests`, { timeout: 15000 }, async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'beeftv-chatgpt-test-'));
+  if (connected) {
+    await mkdir(path.join(dir, 'pi-agent'));
+    await writeFile(path.join(dir, 'pi-agent/auth.json'), JSON.stringify({ 'openai-codex': {
+      type: 'oauth', access: 'test-only-access', refresh: 'test-only-refresh',
+      accountId: 'test-only-account', expires: Date.now() + 3600000,
+    } }), { mode: 0o600 });
+  }
   const child = spawn(process.execPath, [new URL('./server.mjs', import.meta.url).pathname], { env: {
     ...process.env, BEEFTV_AGENT_PORT: '0', BEEFTV_AGENT_LISTEN_FD: '', BEEFTV_AGENT_DATA_DIR: dir,
     BEEFTV_AGENT_HOST_TOKEN: 'test-only-host-token', BEEFTV_AGENT_INSTANCE_NONCE: 'test-only-nonce',
@@ -24,12 +31,13 @@ test('real pinned SDK starts without API key, protects OAuth metadata and dispat
     const headers = { 'X-Beeftv-Agent-Token': 'test-only-host-token', 'X-Beeftv-Instance-Nonce': 'test-only-nonce' };
     assert.equal((await fetch(`${base}/oauth/status`)).status, 403);
     const status = await (await fetch(`${base}/oauth/status`, { headers })).json();
-    assert.equal(status.active, true); assert.equal(status.connected, false);
+    assert.equal(status.active, true); assert.equal(status.connected, connected);
     assert.equal(status.model, 'gpt-6.1-sol');
     assert.ok(status.models.some((model) => model.id === 'gpt-6.1-sol'));
     assert.ok(status.models.some((model) => model.id === 'gpt-6-astra'));
     const health = await (await fetch(`${base}/health`, { headers })).json();
-    assert.equal(health.reason, 'credential_missing');
+    assert.equal(health.reason, connected ? undefined : 'credential_missing');
+    assert.equal(health.ok, connected);
     assert.equal(health.requests.dispatched, 0);
     assert.equal((await stat(path.join(dir, 'pi-agent'))).mode & 0o777, 0o700);
     const bad = await fetch(`${base}/oauth/login`, { method: 'POST', headers, body: JSON.stringify({ method: 'invalid' }) });

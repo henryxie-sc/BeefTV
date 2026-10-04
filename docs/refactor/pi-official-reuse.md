@@ -73,6 +73,7 @@
 
 - ChatGPT/Codex 目录由 `codex-models.mjs` 使用 `ModelRuntime.registerProvider` 补齐 `gpt-6.1-sol`，保留全部内置模型及原生 OAuth/刷新/传输。新会话使用 `low`；历史会话的 `off` 与 `minimal` 也映射为 `low`，避免发送模型不支持的 `none`。上下文窗口沿用原生 Codex Sol 的保守额度。模型目录不代表账号调用权限。
 - ChatGPT/Codex 宿主在 SDK 导入后由 `codex-transport.mjs` 显式安装 Undici 的 `EnvHttpProxyAgent`，遵循环境 HTTP(S) 代理并直连本地业务桥。SDK 的 Undici 默认连接器会覆盖 Node 的环境代理，单独设置 `NODE_USE_ENV_PROXY` 不足以保证授权与模型请求走代理。
+- 注册 Codex 模型后等待 SDK 的本地认证状态刷新，再计算宿主就绪状态；已有账号凭据的重启不得缓存注册期间暂时的 `credential_missing`。启动验证不发出模型请求。
 
 - 未接官方 web-ui / TUI / 实验服务器。
 - 未升级 SDK。
