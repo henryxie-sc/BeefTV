@@ -71,6 +71,8 @@
 
 ## 限制
 
+- ChatGPT/Codex 目录由 `codex-models.mjs` 使用 `ModelRuntime.registerProvider` 补齐 `gpt-6.1-sol`，保留全部内置模型及原生 OAuth/刷新/传输。新会话使用 `low`；历史会话的 `off` 与 `minimal` 也映射为 `low`，避免发送模型不支持的 `none`。上下文窗口沿用原生 Codex Sol 的保守额度。模型目录不代表账号调用权限。
+
 - 未接官方 web-ui / TUI / 实验服务器。
 - 未升级 SDK。
 - 压缩与自动重试依赖官方内部路径；测试覆盖事件映射与设置钉值，不打付费模型。

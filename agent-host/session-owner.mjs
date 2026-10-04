@@ -10,6 +10,7 @@ import { sessionActionIdentity } from './session-identity.mjs';
 import { newTurnAccumulator, projectTurnHistory, sessionTitle } from './canvas-turn.mjs';
 import { createFullControlLoader } from './full-control-loader.mjs';
 import { createHostSettingsManager } from './session-settings.mjs';
+import { assistantThinkingLevel } from './codex-models.mjs';
 import { createTurnObserver } from './lifecycle-events.mjs';
 
 export const TURN_ENTRY_TYPE = 'beeftv.canvas.turn';
@@ -180,7 +181,7 @@ export function createSessionStore({ sessionRoot, workspaceRoot, agentDir, runId
       agentDir,
       modelRuntime: getModelRuntime() || undefined,
       model: getModel() || undefined,
-      thinkingLevel: 'off',
+      thinkingLevel: assistantThinkingLevel(getModel()),
       noTools: 'builtin',
       customTools: tools,
       resourceLoader,

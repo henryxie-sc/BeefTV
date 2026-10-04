@@ -15,6 +15,7 @@ import { createDurableRequestBudget } from './durable-request-budget.mjs';
 import { createOperationBridge } from './operation-bridge.mjs';
 import { TURN_ENTRY_TYPE, createSessionStore } from './session-owner.mjs';
 import { createChatGPTAuth } from './chatgpt-auth.mjs';
+import { registerCodexModels } from './codex-models.mjs';
 
 const OPS_URL = (process.env.BEEFTV_OPS_URL || 'http://127.0.0.1:18090/api').replace(/\/+$/, '');
 const HOST_TOKEN = process.env.BEEFTV_AGENT_HOST_TOKEN || '';
@@ -70,6 +71,7 @@ async function initializeModel() {
       authPath: path.join(AGENT_DIR, 'auth.json'), modelsPath: null, refreshOnCreate: false,
     });
     if (CHATGPT_MODE) {
+      registerCodexModels(modelRuntime);
       MODEL = modelRuntime.getModel('openai-codex', MODEL_ID);
       providerReason = !MODEL ? 'model_not_configured' : modelRuntime.hasConfiguredAuth('openai-codex') ? '' : 'credential_missing';
       return;

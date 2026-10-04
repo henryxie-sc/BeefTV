@@ -10,7 +10,7 @@ test('real pinned SDK starts without API key, protects OAuth metadata and dispat
   const child = spawn(process.execPath, [new URL('./server.mjs', import.meta.url).pathname], { env: {
     ...process.env, BEEFTV_AGENT_PORT: '0', BEEFTV_AGENT_LISTEN_FD: '', BEEFTV_AGENT_DATA_DIR: dir,
     BEEFTV_AGENT_HOST_TOKEN: 'test-only-host-token', BEEFTV_AGENT_INSTANCE_NONCE: 'test-only-nonce',
-    BEEFTV_AGENT_MODEL: 'gpt-6-astra', BEEFTV_AGENT_API: 'openai-codex-responses',
+    BEEFTV_AGENT_MODEL: 'gpt-6.1-sol', BEEFTV_AGENT_API: 'openai-codex-responses',
     BEEFTV_AGENT_BASE_URL: 'https://chatgpt.com/backend-api', BEEFTV_AGENT_API_KEY: '',
     BEEFTV_OPS_URL: 'http://127.0.0.1:1/api', BEEFTV_AGENT_LIFETIME_STDIN: '0',
   }, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -25,7 +25,8 @@ test('real pinned SDK starts without API key, protects OAuth metadata and dispat
     assert.equal((await fetch(`${base}/oauth/status`)).status, 403);
     const status = await (await fetch(`${base}/oauth/status`, { headers })).json();
     assert.equal(status.active, true); assert.equal(status.connected, false);
-    assert.equal(status.model, 'gpt-6-astra');
+    assert.equal(status.model, 'gpt-6.1-sol');
+    assert.ok(status.models.some((model) => model.id === 'gpt-6.1-sol'));
     assert.ok(status.models.some((model) => model.id === 'gpt-6-astra'));
     const health = await (await fetch(`${base}/health`, { headers })).json();
     assert.equal(health.reason, 'credential_missing');
