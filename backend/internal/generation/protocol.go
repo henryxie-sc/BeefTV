@@ -157,6 +157,11 @@ func ExtractProviderTaskID(body []byte) (string, error) {
 			return "", nestedErr
 		}
 	}
+	if data, ok := payload["data"].([]interface{}); ok && len(data) == 1 {
+		if task, ok := data[0].(map[string]interface{}); ok {
+			return firstJSONString(task, "task_id", "taskId", "id")
+		}
+	}
 	return "", err
 }
 

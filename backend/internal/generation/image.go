@@ -16,10 +16,19 @@ import (
 	"strings"
 
 	"infinite-canvas/backend/internal/model"
+	"infinite-canvas/backend/internal/protocol"
 )
 
 func RunImageTask(ctx context.Context, input Input) (map[string]interface{}, error) {
-	if _, ok := DeclarativeProtocolAdapterForContext(ctx, input.Config.InterfaceType); ok {
+	if adapter, ok := DeclarativeProtocolAdapterForContext(ctx, input.Config.InterfaceType); ok {
+		if protocol.IsAPIMartImage(input.Config.BaseURL, input.Config.InterfaceType) {
+			var err error
+			input, err = prepareAPIMartImageReferences(ctx, input)
+			if err != nil {
+				return nil, err
+			}
+			return RunProtocolAdapterTask(ctx, input, protocol.APIMartImageAdapter{Adapter: adapter})
+		}
 		return RunDeclarativeProtocolTask(ctx, input)
 	}
 	if input.Config.InterfaceType == string(model.ChannelInterfaceGrokImage) {

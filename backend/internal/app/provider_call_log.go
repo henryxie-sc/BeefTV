@@ -18,6 +18,11 @@ func (s *Service) EnrichAPICallLog(log *model.ApiCallLog, responseBody []byte) {
 	if log.ProviderRequestID == "" {
 		log.ProviderRequestID = providerRequestIDFromPath(log.Path)
 	}
+	if log.ProviderRequestID == "" && log.Capability == "image" && log.RequestKind == "create" {
+		if id, err := extractProviderTaskID(responseBody); err == nil {
+			log.ProviderRequestID = id
+		}
+	}
 	for _, payload := range providerResponsePayloads(responseBody) {
 		s.enrichAPICallLogPayload(log, payload)
 	}

@@ -360,60 +360,6 @@ function InfiniteCanvasPage() {
     const viewportRef = useRef(viewport);
 
     useEffect(() => {
-        if (!projectId || !projectLoaded || !isLocalWorkspaceMode()) return;
-        let disposed = false;
-        const check = () => {
-            if (disposed) return;
-            const editorNodes = nodesRef.current;
-            const editorConnections = connectionsRef.current;
-            const canApplyBackendSnapshot = () => {
-                const stored = useCanvasStore.getState().projects.find((project) => project.id === projectId);
-                return Boolean(
-                    stored &&
-                    nodesRef.current === editorNodes &&
-                    connectionsRef.current === editorConnections &&
-                    stored.nodes === editorNodes &&
-                    stored.connections === editorConnections,
-                );
-            };
-            void refreshLocalCanvasProjectIfChanged(projectId, canApplyBackendSnapshot).then((project) => {
-                if (!disposed && project && nodesRef.current === editorNodes && connectionsRef.current === editorConnections) {
-                    setNodes(project.nodes || []);
-                    setConnections(project.connections || []);
-                }
-            });
-        };
-        const timer = window.setInterval(check, 4000);
-        return () => { disposed = true; window.clearInterval(timer); };
-    }, [connectionsRef, nodesRef, projectId, projectLoaded, setConnections, setNodes]);
-    useEffect(() => {
-        if (!projectId || !projectLoaded || !isLocalWorkspaceMode() || window.location.protocol !== "http:") return;
-        const source = new EventSource(`/api/canvas-projects/${encodeURIComponent(projectId)}/events`);
-        const sync = () => {
-            const editorNodes = nodesRef.current;
-            const editorConnections = connectionsRef.current;
-            const canApplyBackendSnapshot = () => {
-                const stored = useCanvasStore.getState().projects.find((project) => project.id === projectId);
-                return Boolean(
-                    stored &&
-                    nodesRef.current === editorNodes &&
-                    connectionsRef.current === editorConnections &&
-                    stored.nodes === editorNodes &&
-                    stored.connections === editorConnections,
-                );
-            };
-            void refreshLocalCanvasProjectIfChanged(projectId, canApplyBackendSnapshot).then((project) => {
-                if (project && nodesRef.current === editorNodes && connectionsRef.current === editorConnections) {
-                    setNodes(project.nodes || []);
-                    setConnections(project.connections || []);
-                }
-            });
-        };
-        source.addEventListener("canvas.updated", sync);
-        return () => { source.removeEventListener("canvas.updated", sync); source.close(); };
-    }, [connectionsRef, nodesRef, projectId, projectLoaded, setConnections, setNodes]);
-
-    useEffect(() => {
         if (!projectId) return;
         return registerCanvasGenerationLiveProject({
             scope: canvasStorageScope,
