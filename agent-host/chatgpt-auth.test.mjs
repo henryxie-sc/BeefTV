@@ -70,3 +70,11 @@ test('token exchange errors expose only a safe network category', async () => {
   assert.equal(auth.status().connected, false);
   assert.equal(JSON.stringify(auth.status()).includes('secret-token'), false);
 });
+
+test('regional denial is distinguished from generic network failure without exposing token response', async () => {
+  const { auth } = fixture({ login: async () => { throw new Error('OpenAI Codex token exchange failed (403): {"error":{"code":"unsupported_country_region_territory"},"secret":"token-value"}'); } });
+  auth.start(); await tick();
+  assert.equal(auth.status().errorReason, 'oauth_region_restricted');
+  assert.equal(auth.status().connected, false);
+  assert.equal(JSON.stringify(auth.status()).includes('token-value'), false);
+});

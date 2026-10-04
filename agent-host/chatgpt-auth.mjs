@@ -74,8 +74,9 @@ export function createChatGPTAuth({ runtime, isBusy, onAuthenticated, getModel }
       if (state === 'error') {
         // SDK error text may include a token response. Return only a stable category.
         const message = String(error?.message || '').toLowerCase();
-        errorReason = /fetch failed|timeout|timed out|econn|403|cloudflare|access denied/.test(message)
-          ? 'oauth_network_error' : message.includes('state mismatch') ? 'oauth_state_mismatch' : 'oauth_failed';
+        errorReason = message.includes('unsupported_country_region_territory') ? 'oauth_region_restricted'
+          : /fetch failed|timeout|timed out|econn|403|cloudflare|access denied/.test(message)
+            ? 'oauth_network_error' : message.includes('state mismatch') ? 'oauth_state_mismatch' : 'oauth_failed';
       }
     }).finally(() => {
       clearTimeout(timer);

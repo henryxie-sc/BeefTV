@@ -34,6 +34,7 @@ export function ChatGPTConnection() {
         <p className="mt-1 mb-3 text-xs text-foreground/55">使用 ChatGPT 账号授权连接创作助手，无需填写 API Key。模型能否使用取决于账号权限。</p>
         <p className="mb-3 text-sm">{failed ? "连接状态读取失败，请重新打开设置" : !connection ? "正在读取连接状态…" : connection.state === "starting" ? "正在准备登录…" : connection.state === "pending" ? "等待你在浏览器中完成授权" : connection.state === "error" ? "登录未完成，请重试" : connection.connected ? "已登录" : "未登录"}</p>
         {connection?.errorReason === "oauth_network_error" && <p className="mb-3 text-sm text-foreground/70">OpenAI 授权令牌获取失败，请确认代理可用后重新登录。浏览器授权成功并不代表助手已收到令牌。</p>}
+        {connection?.errorReason === "oauth_region_restricted" && <p className="mb-3 text-sm text-foreground/70">OpenAI 拒绝了当前网络出口所在地区的令牌请求（HTTP 403）。请确认所在地和网络出口符合 OpenAI 支持地区要求后，再重新授权。</p>}
         {connection?.errorReason === "oauth_state_mismatch" && <p className="mb-3 text-sm text-foreground/70">授权回调与本次登录不匹配，请重新登录并使用新打开的授权页面。</p>}
         <div className="flex flex-wrap items-center gap-2">
             {!connection?.active ? <Button disabled={!connection || busy} loading={busy} onClick={() => void update("connect", { model: "gpt-6-astra" })}>启用账号连接</Button> : <>
