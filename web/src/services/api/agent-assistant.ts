@@ -157,6 +157,7 @@ export type ChatGPTConnection = {
     authUrl?: string;
     device?: { userCode: string; verificationUri: string };
     prompt?: { type: "manual_code" };
+    errorReason?: string;
 };
 
 export const ASSISTANT_CONNECTION_EVENT = "beeftv-assistant-connection-changed";

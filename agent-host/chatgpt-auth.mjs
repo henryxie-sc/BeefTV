@@ -7,6 +7,7 @@ export function createChatGPTAuth({ runtime, isBusy, onAuthenticated, getModel }
   let device = null;
   let prompt = null;
   let answer = null;
+  let errorReason = '';
 
   const fail = (reason) => { const error = new Error(reason); error.reason = reason; throw error; };
   const safeAuthURL = (value) => {
@@ -16,7 +17,8 @@ export function createChatGPTAuth({ runtime, isBusy, onAuthenticated, getModel }
   };
   const status = () => ({ active: true, connected: runtime.hasConfiguredAuth('openai-codex'), state,
     model: getModel()?.id || '', models: runtime.getModels('openai-codex').map(({ id, name }) => ({ id, name })),
-    ...(authUrl ? { authUrl } : {}), ...(device ? { device } : {}), ...(prompt ? { prompt } : {}) });
+    ...(authUrl ? { authUrl } : {}), ...(device ? { device } : {}), ...(prompt ? { prompt } : {}),
+    ...(errorReason ? { errorReason } : {}) });
 
   async function cancel() {
     const pending = flow?.done;
@@ -24,6 +26,7 @@ export function createChatGPTAuth({ runtime, isBusy, onAuthenticated, getModel }
     await pending;
     authUrl = ''; device = null; prompt = null; answer = null;
     state = 'idle';
+    errorReason = '';
   }
 
   function start(method = 'browser') {
@@ -32,7 +35,7 @@ export function createChatGPTAuth({ runtime, isBusy, onAuthenticated, getModel }
     if (!['browser', 'device_code'].includes(method)) fail('invalid_request');
     const current = { controller: new AbortController() };
     flow = current;
-    state = 'pending'; authUrl = ''; device = null; prompt = null;
+    state = 'pending'; authUrl = ''; device = null; prompt = null; errorReason = '';
     const timer = setTimeout(() => current.controller.abort(), 10 * 60 * 1000);
     timer.unref?.();
     current.done = runtime.login('openai-codex', 'oauth', {
@@ -65,8 +68,15 @@ export function createChatGPTAuth({ runtime, isBusy, onAuthenticated, getModel }
       if (flow !== current) return;
       await onAuthenticated();
       state = 'connected';
-    }).catch(() => {
-      if (flow === current) state = current.controller.signal.aborted ? 'idle' : 'error';
+    }).catch((error) => {
+      if (flow !== current) return;
+      state = current.controller.signal.aborted ? 'idle' : 'error';
+      if (state === 'error') {
+        // SDK error text may include a token response. Return only a stable category.
+        const message = String(error?.message || '').toLowerCase();
+        errorReason = /fetch failed|timeout|timed out|econn|403|cloudflare|access denied/.test(message)
+          ? 'oauth_network_error' : message.includes('state mismatch') ? 'oauth_state_mismatch' : 'oauth_failed';
+      }
     }).finally(() => {
       clearTimeout(timer);
       if (flow === current) { flow = null; authUrl = ''; device = null; prompt = null; answer = null; }

@@ -62,3 +62,11 @@ test('busy sessions cannot log in or log out', async () => {
   assert.throws(() => auth.start(), { reason: 'session_busy' });
   await assert.rejects(auth.logout(), { reason: 'session_busy' });
 });
+
+test('token exchange errors expose only a safe network category', async () => {
+  const { auth } = fixture({ login: async () => { throw new Error('Token exchange failed (403): secret-token'); } });
+  auth.start(); await tick();
+  assert.equal(auth.status().errorReason, 'oauth_network_error');
+  assert.equal(auth.status().connected, false);
+  assert.equal(JSON.stringify(auth.status()).includes('secret-token'), false);
+});

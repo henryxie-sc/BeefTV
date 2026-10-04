@@ -46,3 +46,22 @@ func TestChatGPTProviderUsesSDKAuthWithoutChannelAPIKey(t *testing.T) {
 		t.Fatalf("missing model: %s", reason)
 	}
 }
+
+func TestChatGPTEnvEnablesProxyAndBypassesLocalOperationBridge(t *testing.T) {
+	host := New(Options{DataDir: t.TempDir(), Environ: func() []string {
+		return []string{"HTTPS_PROXY=http://127.0.0.1:7897", "no_proxy=example.test", "NODE_USE_ENV_PROXY=0"}
+	}})
+	provider := testProvider()
+	provider.Protocol = "openai-codex"
+	env := host.buildEnv(provider, testPin("http://127.0.0.1:18090/api", "test"))
+	if envValue(env, "NODE_USE_ENV_PROXY") != "1" {
+		t.Fatal("Node fetch must honor configured proxy")
+	}
+	if envValue(env, "HTTPS_PROXY") != "http://127.0.0.1:7897" {
+		t.Fatal("existing proxy must remain unchanged")
+	}
+	want := "example.test,localhost,127.0.0.1,::1"
+	if envValue(env, "NO_PROXY") != want || envValue(env, "no_proxy") != want {
+		t.Fatal("local bridge and inherited bypass must remain direct")
+	}
+}

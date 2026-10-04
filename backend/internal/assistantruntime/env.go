@@ -30,6 +30,21 @@ func (h *Host) buildEnv(provider assistant.Provider, pin childPin) []string {
 	set("BEEFTV_AGENT_HOST_TOKEN", h.hostToken())
 	set("BEEFTV_AGENT_DESKTOP_TOKEN", pin.DesktopTok)
 	set("BEEFTV_AGENT_API_KEY", provider.APIKey)
+	if provider.Protocol == "openai-codex" {
+		// Node fetch does not follow HTTP(S)_PROXY unless explicitly enabled.
+		// Keep the authenticated local operation bridge outside the proxy.
+		set("NODE_USE_ENV_PROXY", "1")
+		bypass := envValue(env, "no_proxy")
+		if bypass == "" {
+			bypass = envValue(env, "NO_PROXY")
+		}
+		if bypass != "" {
+			bypass += ","
+		}
+		bypass += "localhost,127.0.0.1,::1"
+		set("NO_PROXY", bypass)
+		set("no_proxy", bypass)
+	}
 	if pin.Port > 0 {
 		set("BEEFTV_AGENT_PORT", strconv.Itoa(pin.Port))
 	} else {
