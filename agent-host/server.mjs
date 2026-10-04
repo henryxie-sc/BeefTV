@@ -14,6 +14,7 @@ import { budgetError, createTurnBudget, spendModelRequest } from './request-budg
 import { createDurableRequestBudget } from './durable-request-budget.mjs';
 import { createOperationBridge } from './operation-bridge.mjs';
 import { TURN_ENTRY_TYPE, createSessionStore } from './session-owner.mjs';
+import { createChatGPTAuth } from './chatgpt-auth.mjs';
 
 const OPS_URL = (process.env.BEEFTV_OPS_URL || 'http://127.0.0.1:18090/api').replace(/\/+$/, '');
 const HOST_TOKEN = process.env.BEEFTV_AGENT_HOST_TOKEN || '';
@@ -42,6 +43,7 @@ const LIFETIME_REQUEST_BUDGET = Number(process.env.BEEFTV_AGENT_TOTAL_REQUEST_BU
 const MAX_BODY_BYTES = 64 * 1024;
 const READ_ONLY_MODE = process.env.BEEFTV_AGENT_READ_ONLY === '1';
 const PROVIDER_ID = 'beeftv';
+const CHATGPT_MODE = MODEL_API === 'openai-codex-responses';
 
 for (const [name, value] of Object.entries({ BEEFTV_AGENT_HOST_TOKEN: HOST_TOKEN,
   BEEFTV_AGENT_DATA_DIR: DATA_DIR })) {
@@ -53,6 +55,7 @@ const AGENT_DIR = path.join(DATA_DIR, 'pi-agent');
 const WORKSPACE_ROOT = path.join(DATA_DIR, 'workspace');
 fs.mkdirSync(SESSION_ROOT, { recursive: true });
 fs.mkdirSync(AGENT_DIR, { recursive: true });
+fs.chmodSync(AGENT_DIR, 0o700);
 fs.mkdirSync(WORKSPACE_ROOT, { recursive: true });
 
 let providerReason = '';
@@ -60,12 +63,17 @@ let MODEL = null;
 let modelRuntime = null;
 
 async function initializeModel() {
-  providerReason = providerUnavailableReason({ modelId: MODEL_ID, baseUrl: BASE_URL, apiKey: API_KEY, api: MODEL_API });
+  providerReason = CHATGPT_MODE ? '' : providerUnavailableReason({ modelId: MODEL_ID, baseUrl: BASE_URL, apiKey: API_KEY, api: MODEL_API });
   if (providerReason) return;
   try {
     modelRuntime = await ModelRuntime.create({
       authPath: path.join(AGENT_DIR, 'auth.json'), modelsPath: null, refreshOnCreate: false,
     });
+    if (CHATGPT_MODE) {
+      MODEL = modelRuntime.getModel('openai-codex', MODEL_ID);
+      providerReason = !MODEL ? 'model_not_configured' : modelRuntime.hasConfiguredAuth('openai-codex') ? '' : 'credential_missing';
+      return;
+    }
     modelRuntime.registerProvider(PROVIDER_ID, providerRegistration({
       api: MODEL_API, baseUrl: BASE_URL, modelId: MODEL_ID,
       maxTokens: MAX_OUTPUT_TOKENS, contextWindow: CONTEXT_WINDOW,
@@ -225,6 +233,21 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   try {
+    if (url.pathname.startsWith('/oauth/')) {
+      if (!chatGPTAuth) { respond(res, 400, { reason: 'model_protocol_unsupported' }); return; }
+      if (req.method === 'GET' && url.pathname === '/oauth/status') {
+        respond(res, 200, chatGPTAuth.status()); return;
+      }
+      if (req.method === 'POST') {
+        const body = JSON.parse((await readBody(req)) || '{}');
+        if (url.pathname === '/oauth/login') chatGPTAuth.start(body.method || 'browser');
+        else if (url.pathname === '/oauth/answer') chatGPTAuth.answer(body.code);
+        else if (url.pathname === '/oauth/cancel') await chatGPTAuth.cancel();
+        else if (url.pathname === '/oauth/logout') await chatGPTAuth.logout();
+        else { respond(res, 404, { reason: 'not_found' }); return; }
+        respond(res, 200, chatGPTAuth.status()); return;
+      }
+    }
     if (req.method === 'GET' && url.pathname === '/sessions') {
       const canvasId = String(url.searchParams.get('canvasId') || '').trim();
       if (!canvasId) { respond(res, 400, { code: 400, reason: 'invalid_request' }); return; }
@@ -349,6 +372,9 @@ const server = http.createServer(async (req, res) => {
     }
     respond(res, 404, { code: 404, reason: 'not_found' });
   } catch (error) {
+    if (url.pathname.startsWith('/oauth/')) {
+      respond(res, error?.reason === 'session_busy' ? 409 : 400, { reason: error?.reason || 'oauth_failed' }); return;
+    }
     if (error?.tooLarge) { respond(res, 413, { code: 413, reason: 'body_too_large' }); return; }
     if (!res.headersSent && respondStoreError(res, error)) return;
     console.error(`agent-host: 请求失败 ${error?.message || error}`);
@@ -362,6 +388,7 @@ async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   try {
+    await chatGPTAuth?.cancel();
     const released = await store.disposeAll();
     console.error(`agent-host: 关闭，释放 ${released} 个会话`);
   } catch (error) {
@@ -379,6 +406,12 @@ if (LIFETIME_STDIN) {
 }
 
 await initializeModel();
+const chatGPTAuth = CHATGPT_MODE && modelRuntime ? createChatGPTAuth({ runtime: modelRuntime,
+  isBusy: anySessionBusy, getModel: () => MODEL,
+  onAuthenticated: async () => {
+    providerReason = !MODEL ? 'model_not_configured' : modelRuntime.hasConfiguredAuth('openai-codex') ? '' : 'credential_missing';
+  },
+}) : null;
 try {
   const count = await ops.loadDescriptors();
   console.error(`agent-host: 载入 ${count} 个操作（readOnly=${READ_ONLY_MODE}）`);

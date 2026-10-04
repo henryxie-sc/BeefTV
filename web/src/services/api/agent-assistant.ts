@@ -148,6 +148,30 @@ export async function getAgentHostStatus(): Promise<AgentHostStatus> {
     return data;
 }
 
+export type ChatGPTConnection = {
+    active: boolean;
+    connected: boolean;
+    state?: "idle" | "starting" | "pending" | "connected" | "error";
+    model?: string;
+    models?: { id: string; name: string }[];
+    authUrl?: string;
+    device?: { userCode: string; verificationUri: string };
+    prompt?: { type: "manual_code" };
+};
+
+export const ASSISTANT_CONNECTION_EVENT = "beeftv-assistant-connection-changed";
+export async function openChatGPTAuthorization(): Promise<void> {
+    await http.post("/assistant/chatgpt/open", {}, await uiSessionConfig());
+}
+export async function getChatGPTConnection(): Promise<ChatGPTConnection> {
+    return http.get<ChatGPTConnection>("/assistant/chatgpt/connection", await uiSessionConfig());
+}
+export async function updateChatGPTConnection(action: "connect" | "disable" | "login" | "answer" | "cancel" | "logout", payload: Record<string, string> = {}): Promise<ChatGPTConnection> {
+    const connection = await http.post<ChatGPTConnection>(`/assistant/chatgpt/${action}`, payload, await uiSessionConfig());
+    window.dispatchEvent(new Event(ASSISTANT_CONNECTION_EVENT));
+    return connection;
+}
+
 /** UI 会话头由页面内存里的凭据提供；助手的每条路由都走同一套认证。 */
 async function uiSessionConfig() {
     const token = await ensureAgentUiSession();

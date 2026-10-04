@@ -92,6 +92,14 @@ APIMart 的图片渠道沿用 `openai-image` 配置。仅当 HTTPS 上游主机�
 | `POST /assistant/chat` | NDJSON 流式对话：`text_delta` 增量 + 一次 `turn_end` 结算；可带 `references: [{kind,id}]` 追加已校验的素材/画布引用；宿主凭据与模型密钥由后端注入，页面不接触 |
 | `POST /assistant/cancel` | 取消指定画布正在进行的回合 |
 | `GET/PUT /assistant/host/config`、`POST /assistant/host/start|stop` | 宿主生命周期：需 owner 凭据 + 本机同源；启动命令只取本机配置，绝不接受请求体传入的可执行命令 |
+| `GET /assistant/chatgpt/connection` | 读取 ChatGPT/Codex 连接状态和钉选 SDK 模型目录；仅限内置 UI 会话 |
+| `POST /assistant/chatgpt/connect|disable` | 启用账号连接并选择模型，或回到 API 渠道；忙碌时拒绝切换 |
+| `POST /assistant/chatgpt/login|open|answer|cancel|logout` | 发起浏览器/设备码授权、打开官方授权页面、提交手动回调、取消或退出；仅限内置 UI 会话 |
+
+账号连接复用官方 pi SDK 的 `openai-codex` OAuth、刷新和会话能力，授权由用户在 OpenAI 页面完成。
+授权凭据只保存在本机助手数据目录的 `pi-agent/auth.json`（文件权限 `0600`、目录 `0700`），不返回页面、不写浏览器存储或任务正文。
+`agent_config.json` 的 `authMode: "chatgpt"` 和 `model` 只记录连接方式与模型选择。SDK 目录不是账号可用权限清单；真实可用性以账号授权及模型响应为准。
+Codex 请求固定使用 SSE，使每次请求仍受宿主的调用预算约束。未登录时 `/assistant/status` 返回 `credential_missing`。
 
 按轮撤销不依赖浏览器流或宿主的最后一条消息：轮前文档由后端在转发前落盘，变更摘要由该轮自己的写入回执重建，
 因此浏览器断流（没有 `turn_end`）、用户取消或后端在回合中途重启之后，已经落地的助手写入仍然可以撤销。

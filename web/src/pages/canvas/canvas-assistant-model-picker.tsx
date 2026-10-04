@@ -1,8 +1,22 @@
-import { Select } from "antd";
+import { App, Select } from "antd";
+import { useEffect, useState } from "react";
+import { getChatGPTConnection, updateChatGPTConnection, ASSISTANT_CONNECTION_EVENT, type ChatGPTConnection } from "@/services/api/agent-assistant";
 import { assistantModelOptions, resolveAssistantModel } from "@/lib/assistant-model";
 import { modelDisplayName, resolveModelChannel, useConfigStore } from "@/stores/use-config-store";
 
 export function CanvasAssistantModelPicker({ busy }: { busy: boolean }) {
+    const { message } = App.useApp();
+    const [connection, setConnection] = useState<ChatGPTConnection | null>(null);
+    const [switching, setSwitching] = useState(false);
+    const starting = connection?.state === "starting";
+    useEffect(() => {
+        let disposed = false;
+        const refresh = () => { void getChatGPTConnection().then((value) => { if (!disposed) setConnection(value); }).catch(() => { if (!disposed) setConnection(null); }); };
+        refresh();
+        const timer = starting ? setInterval(refresh, 1500) : undefined;
+        window.addEventListener(ASSISTANT_CONNECTION_EVENT, refresh);
+        return () => { disposed = true; clearInterval(timer); window.removeEventListener(ASSISTANT_CONNECTION_EVENT, refresh); };
+    }, [starting]);
     const config = useConfigStore((state) => state.config);
     const selected = resolveAssistantModel(config);
     const options = assistantModelOptions(config).map((value) => ({
@@ -16,13 +30,20 @@ export function CanvasAssistantModelPicker({ busy }: { busy: boolean }) {
             aria-label="助手模型"
             size="small"
             variant="borderless"
-            value={selected || undefined}
+            value={connection?.active ? connection.model : selected || undefined}
             placeholder={options.length ? "选择助手模型" : "暂无可用模型"}
-            options={options}
-            disabled={busy || options.length === 0}
+            options={connection?.active ? connection.models?.map(({ id, name }) => ({ value: id, label: name })) : options}
+            disabled={busy || switching || (connection?.active ? !connection.models?.length : options.length === 0)}
             placement="topLeft"
             popupMatchSelectWidth={false}
             onChange={(value) => {
+                if (connection?.active) {
+                    setSwitching(true);
+                    void updateChatGPTConnection("connect", { model: value }).then(setConnection)
+                        .catch(() => { void message.error("助手模型切换失败，请稍后重试"); })
+                        .finally(() => setSwitching(false));
+                    return;
+                }
                 if (!busy && assistantModelOptions(useConfigStore.getState().config).includes(value)) {
                     useConfigStore.getState().updateConfig("assistantModel", value);
                 }

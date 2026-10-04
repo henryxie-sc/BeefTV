@@ -172,6 +172,9 @@ export function createSessionStore({ sessionRoot, workspaceRoot, agentDir, runId
     const identity = sessionActionIdentity({ persistedId, runId });
     console.error(`agent-host: 会话 ${canvasId} 的动作身份来源 = ${identity.source}（persistence=${persistence}）`);
     const tools = buildTools(canvasId, log, generation, turn, identity.prefix);
+    const settingsManager = createHostSettingsManager();
+    // Keep Codex calls on the fetch transport covered by the host request budget.
+    if (getModel()?.provider === 'openai-codex') settingsManager.setTransport('sse');
     const { session } = await createAgentSession({
       cwd,
       agentDir,
@@ -181,7 +184,7 @@ export function createSessionStore({ sessionRoot, workspaceRoot, agentDir, runId
       noTools: 'builtin',
       customTools: tools,
       resourceLoader,
-      settingsManager: createHostSettingsManager(),
+      settingsManager,
       sessionManager: manager,
     });
     return {

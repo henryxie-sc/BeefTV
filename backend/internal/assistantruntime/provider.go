@@ -49,6 +49,16 @@ func ResolveProvider(resolve func() (assistant.Provider, error)) (assistant.Prov
 }
 
 func (h *Host) ResolveProvider() (assistant.Provider, string) {
+	if h != nil {
+		config, _ := h.EffectiveConfig()
+		if config.AuthMode == "chatgpt" {
+			if strings.TrimSpace(config.Model) == "" {
+				return assistant.Provider{}, assistant.ReasonModelNotConfigured
+			}
+			return assistant.Provider{ChannelID: "chatgpt", ChannelName: "ChatGPT / Codex", Model: config.Model,
+				ModelKey: config.Model, Protocol: "openai-codex", BaseURL: "https://chatgpt.com/backend-api"}, ""
+		}
+	}
 	if h != nil && h.opts.ResolveProvider != nil {
 		return h.opts.ResolveProvider()
 	}

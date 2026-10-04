@@ -178,7 +178,8 @@ export function useCanvasAssistant({ canvasId, onCanvasChanged }: Options) {
         };
         refresh();
         const timer = setInterval(refresh, starting ? 2000 : 15000);
-        return () => { cancelled = true; clearInterval(timer); };
+        window.addEventListener("beeftv-assistant-connection-changed", refresh);
+        return () => { cancelled = true; clearInterval(timer); window.removeEventListener("beeftv-assistant-connection-changed", refresh); };
     }, [open, starting]);
 
     const loadHistory = useCallback(async (targetCanvas: string, sessionId?: string) => {

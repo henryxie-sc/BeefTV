@@ -10,6 +10,7 @@ import { ensureModelProfilesWithUiDefaults } from "@/lib/model-protocols";
 import { fetchChannelModels, type ChannelModelFetchResult } from "@/services/api/image";
 import { channelHasGenerationCredential, channelHasManagedBeefAPICredential, createModelChannel, defaultBaseUrlForApiFormat, filterModelsByCapability, isBuiltinBeefAPIChannel, modelOptionsFromChannels, normalizeConfigSnapshot, useConfigStore, type AiConfig, type ModelChannel } from "@/stores/use-config-store";
 import { ChannelModelSettings } from "./channel-model-settings";
+import { ChatGPTConnection } from "./chatgpt-connection";
 import { ModelServiceEditor } from "./model-service-editor";
 import { currentModelConnectionReceipt, useModelConnectionTests } from "@/stores/use-model-connection-tests";
 import { ModelLogo } from "@/components/model-logo";
@@ -283,6 +284,7 @@ export function ChannelSettingsPane({ onOpenModels, onOpenRunningHub }: ChannelS
                     </Button>
                 </div>
             </div>
+            {localMode && <ChatGPTConnection />}
             {onOpenRunningHub ? (
                 <section className="settings-section mb-3">
                     <div className="mb-3">

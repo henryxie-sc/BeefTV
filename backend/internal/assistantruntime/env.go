@@ -138,6 +138,8 @@ func envHasKey(env []string, key string) bool {
 // hostAPI 把渠道协议映射成 pi-ai 的 API 适配器名；宿主按它构造模型定义。
 func hostAPI(protocol string) string {
 	switch protocol {
+	case "openai-codex":
+		return "openai-codex-responses"
 	case "claude-api":
 		return "anthropic-messages"
 	case "responses":
@@ -152,6 +154,9 @@ func hostAPI(protocol string) string {
 // Anthropic SDK 自己拼 /v1/messages，所以要去掉 /v1。渠道配置里两种写法都可能出现。
 func hostBaseURL(baseURL, protocol string) string {
 	trimmed := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if protocol == "openai-codex" {
+		return trimmed
+	}
 	if trimmed == "" {
 		return ""
 	}

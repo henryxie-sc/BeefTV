@@ -11,6 +11,7 @@ const hostConfigFile = "agent_config.json"
 
 // HostConfig 记录当前使用的文本模型与宿主启动命令；由本机用户在设置里配置。
 type HostConfig struct {
+	AuthMode    string   `json:"authMode,omitempty"`
 	Model       string   `json:"model"`
 	HostCommand string   `json:"hostCommand"`
 	HostArgs    []string `json:"hostArgs,omitempty"`

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/pkg/browser"
 
 	"infinite-canvas/backend/internal/agentops"
 	"infinite-canvas/backend/internal/app"
@@ -97,6 +98,10 @@ func RegisterAgentProxyRoutes(r gin.IRouter, svc *app.Service, clients *agentops
 		modelInfo := gin.H{"id": provider.Model, "channelId": provider.ChannelID, "channelName": provider.ChannelName}
 		health := host.Probe(c.Request.Context())
 		state := host.State()
+		if provider.Protocol == "openai-codex" && health.Instance != "" && health.Reason == "credential_missing" {
+			ok(c, gin.H{"available": false, "reason": "credential_missing", "model": modelInfo})
+			return
+		}
 		if health.OK {
 			if state.Fingerprint != "" && state.Fingerprint != provider.Fingerprint() {
 				if health.Busy {
@@ -227,6 +232,150 @@ func RegisterAgentProxyRoutes(r gin.IRouter, svc *app.Service, clients *agentops
 		}
 		ok(c, decoded)
 	}
+
+	// Account authorization belongs exclusively to the local product UI.
+	chatGPTGuard := func(c *gin.Context) bool {
+		if !guard(c, true) || missingAssistantHost(c, host) {
+			return false
+		}
+		if c.GetString("agentIdentity") != "ui-session" {
+			c.JSON(http.StatusForbidden, gin.H{"code": 403, "reason": "forbidden"})
+			return false
+		}
+		return true
+	}
+	r.GET("/assistant/chatgpt/connection", func(c *gin.Context) {
+		if !chatGPTGuard(c) {
+			return
+		}
+		config, _ := host.EffectiveConfig()
+		if config.AuthMode != "chatgpt" {
+			ok(c, gin.H{"active": false, "connected": false})
+			return
+		}
+		if host.Probe(c.Request.Context()).Instance == "" {
+			provider, _ := host.ResolveProvider()
+			if _, err := host.Ensure(provider, hostOpsURL(c), launchToken(c), true); err != nil {
+				fail(c, 503, app.BadAuthRequest("助手启动失败"))
+				return
+			}
+			ok(c, gin.H{"active": true, "connected": false, "state": "starting", "model": config.Model})
+			return
+		}
+		hostJSON(c, http.MethodGet, "/oauth/status", nil)
+	})
+	r.POST("/assistant/chatgpt/connect", func(c *gin.Context) {
+		if !chatGPTGuard(c) {
+			return
+		}
+		var payload struct {
+			Model string `json:"model"`
+		}
+		if c.ShouldBindJSON(&payload) != nil || strings.TrimSpace(payload.Model) == "" || len(payload.Model) > 100 {
+			fail(c, 400, app.BadAuthRequest("模型必填"))
+			return
+		}
+		health := host.Probe(c.Request.Context())
+		if host.Running() && (health.Instance == "" || health.Busy) {
+			c.JSON(409, gin.H{"code": 409, "reason": "session_busy"})
+			return
+		}
+		config, _ := host.EffectiveConfig()
+		previous := config
+		config.AuthMode = "chatgpt"
+		config.Model = strings.TrimSpace(payload.Model)
+		if err := host.WriteConfig(config); err != nil {
+			fail(c, 500, app.BadAuthRequest("配置保存失败"))
+			return
+		}
+		provider, _ := host.ResolveProvider()
+		if err := host.Restart(provider, hostOpsURL(c), launchToken(c)); err != nil {
+			_ = host.WriteConfig(previous)
+			fail(c, 503, app.BadAuthRequest("助手启动失败"))
+			return
+		}
+		ok(c, gin.H{"active": true, "connected": false, "state": "starting", "model": config.Model})
+	})
+	for _, action := range []string{"login", "answer", "cancel", "logout"} {
+		action := action
+		r.POST("/assistant/chatgpt/"+action, func(c *gin.Context) {
+			if !chatGPTGuard(c) {
+				return
+			}
+			config, _ := host.EffectiveConfig()
+			if config.AuthMode != "chatgpt" {
+				fail(c, 400, app.BadAuthRequest("请先启用账号连接"))
+				return
+			}
+			body, err := io.ReadAll(io.LimitReader(c.Request.Body, agentProxyMaxBody+1))
+			if err != nil || len(body) > agentProxyMaxBody || !json.Valid(body) {
+				fail(c, 400, app.BadAuthRequest("请求无效"))
+				return
+			}
+			hostJSON(c, http.MethodPost, "/oauth/"+action, body)
+		})
+	}
+	r.POST("/assistant/chatgpt/open", func(c *gin.Context) {
+		if !chatGPTGuard(c) {
+			return
+		}
+		req, err := host.NewChildRequest(c.Request.Context(), http.MethodGet, "/oauth/status", nil)
+		if err != nil {
+			fail(c, 503, app.BadAuthRequest("登录尚未开始"))
+			return
+		}
+		resp, err := agentHostClient(5 * time.Second).Do(req)
+		if err != nil {
+			fail(c, 503, app.BadAuthRequest("登录状态读取失败"))
+			return
+		}
+		defer resp.Body.Close()
+		var summary struct {
+			AuthURL string `json:"authUrl"`
+			Device  *struct {
+				VerificationURI string `json:"verificationUri"`
+			} `json:"device"`
+		}
+		if resp.StatusCode != 200 || json.NewDecoder(io.LimitReader(resp.Body, agentProxyMaxBody)).Decode(&summary) != nil {
+			fail(c, 400, app.BadAuthRequest("登录尚未开始"))
+			return
+		}
+		raw := summary.AuthURL
+		if raw == "" && summary.Device != nil {
+			raw = summary.Device.VerificationURI
+		}
+		parsed, err := url.Parse(raw)
+		if err != nil || parsed.Scheme != "https" || parsed.Host != "auth.openai.com" || parsed.User != nil {
+			fail(c, 400, app.BadAuthRequest("授权地址无效"))
+			return
+		}
+		if err := browser.OpenURL(parsed.String()); err != nil {
+			fail(c, 500, app.BadAuthRequest("浏览器打开失败"))
+			return
+		}
+		ok(c, gin.H{"opened": true})
+	})
+	r.POST("/assistant/chatgpt/disable", func(c *gin.Context) {
+		if !chatGPTGuard(c) {
+			return
+		}
+		health := host.Probe(c.Request.Context())
+		if host.Running() && (health.Instance == "" || health.Busy) {
+			c.JSON(409, gin.H{"code": 409, "reason": "session_busy"})
+			return
+		}
+		config, _ := host.EffectiveConfig()
+		config.AuthMode = ""
+		if err := host.WriteConfig(config); err != nil {
+			fail(c, 500, app.BadAuthRequest("配置保存失败"))
+			return
+		}
+		if err := host.Stop(); err != nil {
+			fail(c, 503, app.BadAuthRequest("助手停止失败"))
+			return
+		}
+		ok(c, gin.H{"active": false, "connected": false})
+	})
 
 	// requireOwnedCanvas 先验证 scope：只能操作当前用户确实拥有的画布，再转发给宿主。
 	requireOwnedCanvas := func(c *gin.Context, canvasID string) (json.RawMessage, bool) {
