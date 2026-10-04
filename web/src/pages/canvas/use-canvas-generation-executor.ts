@@ -89,6 +89,15 @@ export function useCanvasGenerationExecutor({
     const effectiveConfig = useEffectiveConfig();
     const isAiConfigReady = useConfigStore((state) => state.isAiConfigReady);
     const submissionLocksRef = useRef(new Map<string, Promise<unknown>>());
+    const reportPreparationError = useCallback((nodeId: string, error: unknown) => {
+        const errorDetails = generationErrorMessage(error);
+        message.error(errorDetails);
+        setNodes((current) => current.map((node) => node.id !== nodeId ? node : {
+            ...node,
+            metadata: { ...node.metadata, errorDetails,
+                status: node.metadata?.content ? node.metadata.status : NODE_STATUS_ERROR },
+        }));
+    }, [message, setNodes]);
     const confirmDuplicateSubmission = useCallback(
         () =>
             new Promise<boolean>((resolve) => {
@@ -129,7 +138,7 @@ export function useCanvasGenerationExecutor({
                     try {
                         generationConfig = buildConfirmedGenerationConfig(inputConfig, sourceNode, mode, undefined, options?.confirmedModelKey);
                     } catch (error) {
-                        message.error(generationErrorMessage(error));
+                        reportPreparationError(nodeId, error);
                         return;
                     }
                     const hasLiveBatchChildren =
@@ -191,8 +200,7 @@ export function useCanvasGenerationExecutor({
                         const hydratedCompatibilityError = usesWorkflowProvider ? "" : modelCompatibilityError(generationConfig, generationConfig.model, hydratedRequirements);
                         if (hydratedCompatibilityError) throw new Error(`当前模型无法支持这组输入和参数：${hydratedCompatibilityError}`);
                     } catch (error) {
-                        const errorDetails = generationErrorMessage(error);
-                        message.error(errorDetails);
+                        reportPreparationError(nodeId, error);
                         return;
                     }
 
@@ -440,9 +448,10 @@ export function useCanvasGenerationExecutor({
                     }
                 },
                 () => message.info({ key: `canvas-generation-submission-${nodeId}`, content: "该节点已有生成请求正在提交或执行，请勿重复点击" }),
-            ),
+            ).catch((error) => reportPreparationError(nodeId, error)),
         [
             addedSkills,
+            reportPreparationError,
             applyGenerationTaskResult,
             bindGenerationTask,
             confirmDuplicateSubmission,

@@ -39,7 +39,7 @@ type CanvasNodePromptPanelProps = {
     isRunning: boolean;
     onPromptChange: (nodeId: string, prompt: string) => void;
     onConfigChange: (nodeId: string, patch: Partial<CanvasNodeMetadata>) => void;
-    onGenerate: (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => void;
+    onGenerate: (nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => void | Promise<void>;
     mentionReferences?: CanvasResourceReference[];
     onAddReference?: (nodeId: string, reference: CanvasResourceReference) => CanvasResourceReference | undefined;
     onRemoveReference?: (nodeId: string, reference: CanvasResourceReference) => void;
@@ -82,6 +82,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
     const hasImageContent = node.type === CanvasNodeType.Image && Boolean(node.metadata?.content);
     const savedPrompt = node.metadata?.composerContent ?? node.metadata?.prompt ?? "";
     const [prompt, setPrompt] = useState(savedPrompt);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [presetOpen, setPresetOpen] = useState(false);
     const [expandedPresetOpen, setExpandedPresetOpen] = useState(false);
     const [expandedPromptOpen, setExpandedPromptOpen] = useState(false);
@@ -223,15 +224,20 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
         updatePrompt(basePrompt ? `${basePrompt} ${insertText}` : insertText);
     };
 
-    const submit = () => {
+    const submit = async () => {
         const text = prompt.trim();
-        if (!text || isRunning) return false;
-        onGenerate(node.id, mode, text);
-        return true;
+        if (!text || isRunning || isSubmitting) return false;
+        setIsSubmitting(true);
+        try {
+            await onGenerate(node.id, mode, text);
+            return true;
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
-    const submitExpandedPrompt = () => {
-        if (submit()) {
+    const submitExpandedPrompt = async () => {
+        if (await submit()) {
             setExpandedPresetOpen(false);
             setExpandedPromptOpen(false);
         }
@@ -304,12 +310,12 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
     );
 
     const renderSubmitButton = (expanded: boolean) => {
-        const actionLabel = isRunning ? "生成中" : "生成";
+        const actionLabel = isRunning ? "生成中" : isSubmitting ? "正在准备生成" : "生成";
         return (
             <Button
                 type="text"
                 className="canvas-node-composer-submit canvas-node-composer-submit-canvas"
-                disabled={isRunning || isSubmitDisabled}
+                disabled={isRunning || isSubmitting || isSubmitDisabled}
                 style={
                     {
                         color: isSubmitDisabled ? theme.node.faint : theme.node.text,
@@ -322,7 +328,7 @@ export function CanvasNodePromptPanel({ projectId, node, isRunning, onPromptChan
                 title={actionLabel}
             >
                 <span className="canvas-node-composer-submit-action" aria-hidden>
-                    {isRunning ? <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" /> : <ArrowUp className="size-3.5" strokeWidth={2.4} />}
+                    {isRunning || isSubmitting ? <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" /> : <ArrowUp className="size-3.5" strokeWidth={2.4} />}
                 </span>
             </Button>
         );

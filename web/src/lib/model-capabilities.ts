@@ -582,7 +582,20 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
             video.duration = { ...video.duration, max: 30 };
         }
     }
+    applyAutoDLReferenceWorkflow(video, protocol, model);
     return { version: 1, text, image: defaultImageCapabilityConfig(protocol, model), video };
+}
+
+function applyAutoDLReferenceWorkflow(video: VideoCapabilityConfig, protocol: ModelProtocol | undefined, model: string | undefined) {
+    if (protocol !== "autodl-comfyui" || !["minimax_h3_zm_u24", "minimax_h3_zm_u08"].includes(model || "")) return;
+    // ZM workflows expose ref_image_0..8, not video/audio reference slots.
+    // Persisted generic profiles predate this workflow-specific declaration.
+    video.operations = Array.from(new Set([...video.operations, "reference_to_video"]));
+    video.references.maxImages = Math.min(video.references.maxImages, 9);
+    video.references.maxVideos = 0;
+    video.references.maxAudios = 0;
+    video.duration = { selection: "range", min: 1, max: 15, step: 1, default: 5 };
+    video.resolutions = ["480p", "768p"];
 }
 
 export function pluginWorkflowCapabilityConfig(protocol: ModelProtocol, workflow: ModelProtocolWorkflow): ModelCapabilityConfig | undefined {
@@ -631,6 +644,7 @@ export function modelCapabilityConfigFor(
     const capabilityConfig = normalizeModelCapabilityConfig(profile.capabilityConfig);
     const text = capabilityConfig.text ? { ...fallback.text!, ...capabilityConfig.text, references: { ...fallback.text!.references, ...capabilityConfig.text.references } } : fallback.text;
     const video = (capabilityConfig.video ? { ...fallback.video!, ...capabilityConfig.video, references: { ...fallback.video!.references, ...capabilityConfig.video.references } } : fallback.video)!;
+    applyAutoDLReferenceWorkflow(video, protocol, modelName);
     alignMaterialPixels(video);
     const configuredImage = capabilityConfig.image;
     const image = configuredImage

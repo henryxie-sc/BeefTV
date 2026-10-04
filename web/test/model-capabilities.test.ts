@@ -6,6 +6,18 @@ import { DEFAULT_VIDEO_PROMPT_MAX_CHARS, defaultModelCapabilityConfig, modelCapa
 import { modelCompatibilityError } from "../src/lib/model-selection.ts";
 import type { AiConfig } from "../src/stores/use-config-store.ts";
 
+test("AutoDL ZM accepts three reference images with a persisted generic profile, but rejects unsupported media", () => {
+    const model = "autodl::minimax_h3_zm_u24";
+    const generic = defaultModelCapabilityConfig(undefined, "test-model");
+    const config = { channels: [{ id: "autodl", models: ["minimax_h3_zm_u24"], interfaceType: "autodl-comfyui",
+        modelProfiles: [{ model: "minimax_h3_zm_u24", capabilityConfig: generic }] }] } as AiConfig;
+    const input = { textCount: 0, imageCount: 3, characterCount: 0, videoCount: 0, audioCount: 0 };
+    assert.equal(modelCompatibilityError(config, model, { capability: "video", videoSeconds: "13", input }), "");
+    assert.match(modelCompatibilityError(config, model, { capability: "video", input: { ...input, imageCount: 10 } }), /参考图/);
+    assert.match(modelCompatibilityError(config, model, { capability: "video", input: { ...input, videoCount: 1 } }), /参考视频/);
+    assert.match(modelCompatibilityError(config, model, { capability: "video", input: { ...input, audioCount: 1 } }), /参考音频/);
+});
+
 test("switching to MiniMax H3 replaces an unsupported 720p value with 768P", () => {
     const profile = defaultModelCapabilityConfig("minimax-video", "MiniMax-H3").video!;
 
