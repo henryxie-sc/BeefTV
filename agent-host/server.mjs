@@ -16,6 +16,7 @@ import { createOperationBridge } from './operation-bridge.mjs';
 import { TURN_ENTRY_TYPE, createSessionStore } from './session-owner.mjs';
 import { createChatGPTAuth } from './chatgpt-auth.mjs';
 import { registerCodexModels } from './codex-models.mjs';
+import { configureCodexTransport } from './codex-transport.mjs';
 
 const OPS_URL = (process.env.BEEFTV_OPS_URL || 'http://127.0.0.1:18090/api').replace(/\/+$/, '');
 const HOST_TOKEN = process.env.BEEFTV_AGENT_HOST_TOKEN || '';
@@ -45,6 +46,7 @@ const MAX_BODY_BYTES = 64 * 1024;
 const READ_ONLY_MODE = process.env.BEEFTV_AGENT_READ_ONLY === '1';
 const PROVIDER_ID = 'beeftv';
 const CHATGPT_MODE = MODEL_API === 'openai-codex-responses';
+if (CHATGPT_MODE) configureCodexTransport();
 
 for (const [name, value] of Object.entries({ BEEFTV_AGENT_HOST_TOKEN: HOST_TOKEN,
   BEEFTV_AGENT_DATA_DIR: DATA_DIR })) {

@@ -6,6 +6,7 @@
       "name": "beeftv-agent-host",
       "dependencies": {
         "@earendil-works/pi-coding-agent": "0.87.1",
+        "undici": "8.10.2",
       },
     },
   },
