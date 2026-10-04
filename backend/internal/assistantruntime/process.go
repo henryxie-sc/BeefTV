@@ -238,7 +238,7 @@ func (s *supervisor) startOwned(config HostConfig, fingerprint string, timeout t
 	if timeout <= 0 {
 		timeout = defaultReadyTimeout
 	}
-	if err := waitChildReady(baseURL, nonce, token, timeout, done); err != nil {
+	if err := waitChildReady(baseURL, nonce, token, timeout, done, config.AuthMode == "chatgpt"); err != nil {
 		s.mu.Lock()
 		s.lastErr = err
 		s.mu.Unlock()
@@ -254,7 +254,7 @@ func (s *supervisor) startOwned(config HostConfig, fingerprint string, timeout t
 	return nil
 }
 
-func waitChildReady(baseURL, nonce, token string, timeout time.Duration, done <-chan struct{}) error {
+func waitChildReady(baseURL, nonce, token string, timeout time.Duration, done <-chan struct{}, loginPending bool) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		select {
@@ -265,7 +265,9 @@ func waitChildReady(baseURL, nonce, token string, timeout time.Duration, done <-
 		ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
 		health := probeOwned(ctx, baseURL, nonce, token)
 		cancel()
-		if health.OK && health.Instance == InstanceProof(nonce) {
+		// OAuth needs a live login endpoint before a credential can exist.
+		readyForLogin := loginPending && health.Reason == "credential_missing"
+		if (health.OK || readyForLogin) && health.Instance == InstanceProof(nonce) {
 			return nil
 		}
 		time.Sleep(20 * time.Millisecond)
