@@ -59,6 +59,20 @@ describe("canvas media node semantics", () => {
         expect(getNodeGenerationMode(derived)).toBeNull();
     });
 
+    test("clearing a generated result prompt preserves its editor across reloads", () => {
+        for (const type of [CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio] as const) {
+            const original = mediaNode(type, { nodeRole: "result", resultOrigin: "generated", content: `blob:${type}`, prompt: "old prompt", composerContent: "old prompt", taskId: "task-1" });
+            const cleared = { ...original, metadata: { ...original.metadata, prompt: "", composerContent: "" } };
+            const reloaded = normalizeCanvasMediaNodeSemantics(JSON.parse(JSON.stringify(cleared)));
+            const whitespaceOnly = { ...original, metadata: { ...original.metadata, composerContent: "\n" } };
+            for (const node of [cleared, reloaded, whitespaceOnly]) {
+                expect(canOpenCanvasNodePromptPanel(node)).toBe(true);
+                expect(getNodeGenerationMode(node)).toBe(type === CanvasNodeType.Image ? "image" : type === CanvasNodeType.Video ? "video" : "audio");
+                expect(node.metadata?.content).toBe(original.metadata?.content);
+            }
+        }
+    });
+
     test("explicit role wins over legacy content inference", () => {
         expect(canvasMediaNodeRole(mediaNode(CanvasNodeType.Video, { nodeRole: "generator", content: "preview" }))).toBe("generator");
         expect(canvasMediaNodeRole(mediaNode(CanvasNodeType.Audio, { nodeRole: "result" }))).toBe("result");
