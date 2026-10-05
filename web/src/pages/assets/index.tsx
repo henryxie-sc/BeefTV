@@ -9,6 +9,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { CollectionGrid, PageHeader, PaginationBar, WorkspacePage } from "@/components/layout/workspace-page";
 import { WorkspaceErrorState, WorkspaceLoadingState, WorkspaceState } from "@/components/layout/workspace-state";
 import { AssetMediaPreview } from "@/components/asset-media-preview";
+import { CachedResourceImage } from "@/components/cached-resource-image";
 import { AssetLibraryCard, AssetLibraryCardMedia } from "@/components/assets/asset-library-card";
 import {
     assetFolderQueryKey,
@@ -33,7 +34,7 @@ import { resourceStorageLabel, resourceStorageLocation, resourceStorageTitle } f
 import { formatBytes, readFileAsDataUrl, readImageMeta } from "@/lib/image-utils";
 import { assertUserScope, captureUserScope, userScopeMatches, type CapturedUserScope } from "@/lib/user-scope-guard";
 import { uploadImage } from "@/services/image-storage";
-import { uploadMediaFile } from "@/services/file-storage";
+import { resolveMediaUrl, uploadMediaFile } from "@/services/file-storage";
 import { flushAssetStorePersistence, useAssetStore, type Asset, type AssetCategory, type AssetKind, type ImageAsset } from "@/stores/use-asset-store";
 import { exportAssets, readAssetPackage } from "./asset-transfer";
 import { assetStorageUsageQueryKey } from "./asset-storage-usage";
@@ -1923,7 +1924,7 @@ function AssetDrawer({ asset, onClose, onCopy, onDownload }: { asset: LibraryAss
                             <div className="asset-archive-preview-note">{asset.data.content}</div>
                         ) : asset.kind === "audio" ? (
                             <div className="asset-archive-audio">
-                                <audio src={asset.data.url} controls />
+                                <AssetDetailPlayback key={asset.id} asset={asset} />
                             </div>
                         ) : asset.kind === "model" ? (
                             <div className="asset-archive-preview-model">
@@ -1933,9 +1934,9 @@ function AssetDrawer({ asset, onClose, onCopy, onDownload }: { asset: LibraryAss
                                 </span>
                             </div>
                         ) : asset.kind === "video" ? (
-                            <video src={asset.data.url} controls className="asset-archive-preview-media" />
+                            <AssetDetailPlayback key={asset.id} asset={asset} />
                         ) : (
-                            <AssetImageZoom asset={asset} />
+                            <AssetImageZoom key={asset.id} asset={asset} />
                         )}
                     </div>
                     <div className="flex flex-wrap gap-1.5">
@@ -1990,6 +1991,29 @@ function AssetDrawer({ asset, onClose, onCopy, onDownload }: { asset: LibraryAss
     );
 }
 
+function AssetDetailPlayback({ asset }: { asset: LibraryAsset & { kind: "video" | "audio" } }) {
+    const [url, setUrl] = useState("");
+    const [failed, setFailed] = useState(false);
+    useEffect(() => {
+        let cancelled = false;
+        setUrl("");
+        setFailed(false);
+        void resolveMediaUrl(asset.data.storageKey, asset.data.url).then((resolved) => {
+            if (cancelled) return;
+            setUrl(resolved);
+            setFailed(!resolved);
+        }).catch(() => {
+            if (!cancelled) setFailed(true);
+        });
+        return () => { cancelled = true; };
+    }, [asset.data.storageKey, asset.data.url]);
+    if (failed) return <div role="status">素材加载失败，请重新打开重试</div>;
+    if (!url) return <div role="status">正在加载素材…</div>;
+    return asset.kind === "video"
+        ? <video src={url} controls className="asset-archive-preview-media" onError={() => setFailed(true)} />
+        : <audio src={url} controls onError={() => setFailed(true)} />;
+}
+
 function AssetImageZoom({ asset }: { asset: LibraryAsset & { kind: "image" } }) {
     const [scale, setScale] = useState(1);
     const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -1997,7 +2021,7 @@ function AssetImageZoom({ asset }: { asset: LibraryAsset & { kind: "image" } }) 
     const reset = () => { setScale(1); setOffset({ x: 0, y: 0 }); };
     return (
         <div className="asset-zoom-viewer" onWheel={(event) => { event.preventDefault(); setScale((value) => Math.min(4, Math.max(.25, value * (event.deltaY < 0 ? 1.12 : .89)))); }} onPointerDown={(event) => { if (scale <= 1) return; event.currentTarget.setPointerCapture(event.pointerId); dragRef.current = { x: event.clientX, y: event.clientY, ox: offset.x, oy: offset.y }; }} onPointerMove={(event) => { const drag = dragRef.current; if (!drag) return; setOffset({ x: drag.ox + event.clientX - drag.x, y: drag.oy + event.clientY - drag.y }); }} onPointerUp={() => { dragRef.current = null; }} onPointerCancel={() => { dragRef.current = null; }}>
-            <img src={asset.coverUrl || asset.data.dataUrl} alt={asset.title} loading="lazy" decoding="async" className="asset-archive-preview-media asset-zoom-image" style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }} />
+            <CachedResourceImage storageKey={asset.data.storageKey} src={asset.data.dataUrl || asset.coverUrl} alt={asset.title} eager decoding="async" className="asset-archive-preview-media asset-zoom-image" style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }} loadingFallback={<div role="status">正在加载素材…</div>} fallback={<div role="status">素材加载失败，请重新打开重试</div>} />
             <div className="asset-zoom-controls" data-canvas-no-zoom>
                 <button type="button" title="缩小" aria-label="缩小" onClick={() => setScale((value) => Math.max(.25, value / 1.25))}><ZoomOut className="size-4" /></button>
                 <button type="button" title="恢复适应" aria-label="恢复适应" onClick={reset}>{Math.round(scale * 100)}%</button>
