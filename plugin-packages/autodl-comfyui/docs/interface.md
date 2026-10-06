@@ -39,6 +39,7 @@
 | `minimax_h3_b99_003_12s` | `ref_image_0…8` | 无 | 多图参考。 |
 | `minimax_h3_lightx2v_v5` / `_15s` | `ref_image_0…8` | 无 | 多图参考。 |
 | `minimax_h3_zm_u24` / `minimax_h3_zm_u08` | `ref_image_0…8` | 无 | ZM 多参考视频；`@图片1` 对应 `ref_image_0`。 |
+| `minimax_h3_z0902` | `ref_image_0…5` | 无 | 六图参考，至少 1 张图；1~15 秒，提示词最多 1000 字符；480p/768p/1088p/1440p 横竖画幅。 |
 | `minimax_h3_image_audio_to_video` | `ref_image_0` | `ref_audio_0` | 使用 `audio_duration`，不发送 `prompt/duration`。 |
 | `minimax_h3_image_audio_to_video_v2` / `_15s` | `ref_image_0…8` | `ref_audio_0…2` | 多图多音频。 |
 
@@ -68,7 +69,7 @@
   "apiVersion": "beeftv.plugin/v2",
   "id": "autodl-comfyui",
   "name": "AutoDL ComfyUI 视频与音频",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "author": "BeefTV Contributors",
   "description": "通过 AutoDL.Art ComfyUI 工作流 API 接入异步视频与音频生成，新增 ZM U24/U08 多图参考视频工作流。",
   "documentation": "<当前插件的完整 documentation，由 README.md 与 docs/interface.md 拼接而成；为避免 JSON 递归，此处不重复展开正文。>",
@@ -215,7 +216,8 @@
                         "minimax_h3_image_audio_to_video_v2",
                         "minimax_h3_lightx2v_v5",
                         "minimax_h3_zm_u24",
-                        "minimax_h3_zm_u08"
+                        "minimax_h3_zm_u08",
+                        "minimax_h3_z0902"
                       ]
                     ]
                   },
@@ -653,6 +655,45 @@
         "defaults": {
           "duration": 5,
           "resolution": "736p竖"
+        }
+      },
+      {
+        "id": "minimax_h3_z0902",
+        "label": "H3 六图生视频",
+        "providerId": "autodl-comfyui",
+        "capability": "video",
+        "parameters": [
+          {
+            "name": "prompt",
+            "type": "string",
+            "required": true,
+            "mapping": "prompt"
+          },
+          {
+            "name": "duration",
+            "type": "integer",
+            "mapping": "duration",
+            "description": "视频时长 1~15 秒"
+          },
+          {
+            "name": "resolution",
+            "type": "string",
+            "mapping": "resolution",
+            "values": [
+              "480p竖",
+              "480p横",
+              "768p竖",
+              "768p横",
+              "1088p竖",
+              "1088p横",
+              "1440p竖",
+              "1440p横"
+            ]
+          }
+        ],
+        "defaults": {
+          "duration": 5,
+          "resolution": "768p竖"
         }
       },
       {

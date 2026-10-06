@@ -604,6 +604,16 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
 }
 
 function applyAutoDLReferenceWorkflow(video: VideoCapabilityConfig, protocol: ModelProtocol | undefined, model: string | undefined) {
+    if (protocol === "autodl-comfyui" && model === "minimax_h3_z0902") {
+        video.operations = ["image_to_video", "reference_to_video"];
+        video.references = { ...video.references, minImages: 1, maxImages: 6, maxVideos: 0, maxAudios: 0, promptMaxChars: 1000 };
+        video.duration = { selection: "range", min: 1, max: 15, step: 1, default: 5 };
+        video.resolutions = ["480p", "768p", "1088p", "1440p"];
+        video.ratios = ["16:9", "9:16"];
+        if (!video.resolutions.includes(video.defaultResolution)) video.defaultResolution = "768p";
+        if (!video.ratios.includes(video.defaultRatio)) video.defaultRatio = "9:16";
+        return;
+    }
     const audioReferenceWorkflow = model === "minimax_h3_image_audio_to_video_v2_15s";
     if (protocol !== "autodl-comfyui" || (!audioReferenceWorkflow && !["minimax_h3_zm_u24", "minimax_h3_zm_u08"].includes(model || ""))) return;
     // These declared workflows expose ref_image_0..8. Only the audio workflow

@@ -31,7 +31,8 @@ test("AutoDL audio reference 15s workflow can replace ZM on a copied four-image 
     assert.match(modelCompatibilityError(config, `autodl::${name}`, { ...requirements, input: { ...input, audioCount: 4 } }), /参考音频/);
     assert.match(modelCompatibilityError(config, `autodl::${name}`, { ...requirements, input: { ...input, imageCount: 10 } }), /参考图/);
     assert.match(modelCompatibilityError(config, `autodl::${name}`, { ...requirements, input: { ...input, videoCount: 1 } }), /参考视频/);
-    assert.notEqual(modelCompatibilityError(config, "autodl::minimax_h3_z0902", requirements), "");
+    assert.equal(modelCompatibilityError(config, "autodl::minimax_h3_z0902", requirements), "");
+    assert.match(modelCompatibilityError(config, "autodl::minimax_h3_z0902", { ...requirements, input: { ...input, imageCount: 7 } }), /6 张参考图/);
 });
 
 test("FullVideo full models accept one or two image references as well as mixed video references", () => {

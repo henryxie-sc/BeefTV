@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -48,6 +49,25 @@ func TestAutoDLPluginArtifact(t *testing.T) {
 	}
 	if got := createZM.Body.(map[string]any)["resolution"]; got != "480p竖" {
 		t.Fatalf("ZM resolution = %#v, want 480p竖", got)
+	}
+	images := make([]MediaReference, 6)
+	for i := range images {
+		images[i] = MediaReference{URL: fmt.Sprintf("https://cdn.example/ref%d.png", i)}
+	}
+	z0902, err := adapter.BuildCreate(context.Background(), RequestContext{BaseURL: "https://autodl.art", Request: GenerationRequest{
+		Capability: CapabilityVideo, Model: "minimax_h3_z0902", Prompt: "six references", Duration: 9, Resolution: "1088p", AspectRatio: "9:16", Images: images,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zBody := z0902.Body.(map[string]any)
+	for i := range images {
+		if zBody[fmt.Sprintf("ref_image_%d", i)] != images[i].URL {
+			t.Fatalf("missing Z0902 reference %d", i)
+		}
+	}
+	if zBody["resolution"] != "1088p竖" || z0902.Path != "/api/v1/comfyui/comfyui_workflow/minimax_h3_z0902" {
+		t.Fatalf("Z0902 request = %#v", z0902)
 	}
 
 	create, err := adapter.BuildCreate(context.Background(), RequestContext{BaseURL: "https://autodl.art", Request: GenerationRequest{
