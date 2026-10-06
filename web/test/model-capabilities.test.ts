@@ -20,6 +20,20 @@ test("AutoDL ZM accepts three reference images with a persisted generic profile,
     assert.match(modelCompatibilityError(config, model, { capability: "video", input: { ...input, audioCount: 1 } }), /参考音频/);
 });
 
+test("AutoDL audio reference 15s workflow can replace ZM on a copied four-image node", () => {
+    const name = "minimax_h3_image_audio_to_video_v2_15s";
+    const config = { channels: [{ id: "autodl", models: [name, "minimax_h3_z0902"], interfaceType: "autodl-comfyui",
+        modelProfiles: [{ model: name, capabilityConfig: defaultModelCapabilityConfig(undefined, "generic") }] }] } as AiConfig;
+    const input = { textCount: 1, imageCount: 4, characterCount: 0, videoCount: 0, audioCount: 0 };
+    const requirements = { capability: "video" as const, videoSeconds: "9", input };
+    assert.equal(modelCompatibilityError(config, `autodl::${name}`, requirements), "");
+    assert.equal(modelCompatibilityError(config, `autodl::${name}`, { ...requirements, input: { ...input, audioCount: 3 } }), "");
+    assert.match(modelCompatibilityError(config, `autodl::${name}`, { ...requirements, input: { ...input, audioCount: 4 } }), /参考音频/);
+    assert.match(modelCompatibilityError(config, `autodl::${name}`, { ...requirements, input: { ...input, imageCount: 10 } }), /参考图/);
+    assert.match(modelCompatibilityError(config, `autodl::${name}`, { ...requirements, input: { ...input, videoCount: 1 } }), /参考视频/);
+    assert.notEqual(modelCompatibilityError(config, "autodl::minimax_h3_z0902", requirements), "");
+});
+
 test("FullVideo full models accept one or two image references as well as mixed video references", () => {
     for (const name of ["sd-native-full-2.0", "sd-native-full-2.5", "原生不卡人脸-全参2.0", "原生不卡人脸-全参2.5"]) {
         const config = { channels: [{ id: "fullvideo", baseUrl: "https://video.example.com/v1", models: [name], modelProfiles: [{ model: name, capability: "video", protocol: "full-video" }] }] } as AiConfig;
