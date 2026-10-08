@@ -606,6 +606,7 @@ export function defaultModelCapabilityConfig(protocol?: ModelProtocol, model = "
 function applyAutoDLReferenceWorkflow(video: VideoCapabilityConfig, protocol: ModelProtocol | undefined, model: string | undefined) {
     if (protocol === "autodl-comfyui" && model === "minimax_h3_z0902") {
         video.operations = ["image_to_video", "reference_to_video"];
+        if (!video.operations.includes(video.defaultOperation)) video.defaultOperation = "image_to_video";
         video.references = { ...video.references, minImages: 1, maxImages: 6, maxVideos: 0, maxAudios: 0, promptMaxChars: 1000 };
         video.duration = { selection: "range", min: 1, max: 15, step: 1, default: 5 };
         video.resolutions = ["480p", "768p", "1088p", "1440p"];

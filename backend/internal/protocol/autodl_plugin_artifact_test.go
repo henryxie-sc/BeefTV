@@ -66,8 +66,17 @@ func TestAutoDLPluginArtifact(t *testing.T) {
 			t.Fatalf("missing Z0902 reference %d", i)
 		}
 	}
-	if zBody["resolution"] != "1088p竖" || z0902.Path != "/api/v1/comfyui/comfyui_workflow/minimax_h3_z0902" {
+	if zBody["resolution"] != "1088p竖(1088*1920)" || z0902.Path != "/api/v1/comfyui/comfyui_workflow/minimax_h3_z0902" {
 		t.Fatalf("Z0902 request = %#v", z0902)
+	}
+	z0902Landscape, err := adapter.BuildCreate(context.Background(), RequestContext{BaseURL: "https://autodl.art", Request: GenerationRequest{
+		Capability: CapabilityVideo, Model: "minimax_h3_z0902", Prompt: "landscape resolution", Duration: 15, Resolution: "480p", AspectRatio: "16:9",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := z0902Landscape.Body.(map[string]any)["resolution"]; got != "480p横(864*480)" {
+		t.Fatalf("Z0902 landscape resolution = %#v, want full AutoDL enum", got)
 	}
 
 	create, err := adapter.BuildCreate(context.Background(), RequestContext{BaseURL: "https://autodl.art", Request: GenerationRequest{

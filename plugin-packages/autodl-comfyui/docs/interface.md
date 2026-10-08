@@ -39,7 +39,7 @@
 | `minimax_h3_b99_003_12s` | `ref_image_0…8` | 无 | 多图参考。 |
 | `minimax_h3_lightx2v_v5` / `_15s` | `ref_image_0…8` | 无 | 多图参考。 |
 | `minimax_h3_zm_u24` / `minimax_h3_zm_u08` | `ref_image_0…8` | 无 | ZM 多参考视频；`@图片1` 对应 `ref_image_0`。 |
-| `minimax_h3_z0902` | `ref_image_0…5` | 无 | 六图参考，至少 1 张图；1~15 秒，提示词最多 1000 字符；480p/768p/1088p/1440p 横竖画幅。 |
+| `minimax_h3_z0902` | `ref_image_0…5` | 无 | 六图参考，至少 1 张图；1~15 秒，提示词最多 1000 字符。分辨率必须发送 AutoDL 枚举的完整值，例如 16:9 的 480p 为 `480p横(864*480)`，9:16 的 1088p 为 `1088p竖(1088*1920)`。 |
 | `minimax_h3_image_audio_to_video` | `ref_image_0` | `ref_audio_0` | 使用 `audio_duration`，不发送 `prompt/duration`。 |
 | `minimax_h3_image_audio_to_video_v2` / `_15s` | `ref_image_0…8` | `ref_audio_0…2` | 多图多音频。 |
 
@@ -69,7 +69,7 @@
   "apiVersion": "beeftv.plugin/v2",
   "id": "autodl-comfyui",
   "name": "AutoDL ComfyUI 视频与音频",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "author": "BeefTV Contributors",
   "description": "通过 AutoDL.Art ComfyUI 工作流 API 接入异步视频与音频生成，新增 ZM U24/U08 多图参考视频工作流。",
   "documentation": "<当前插件的完整 documentation，由 README.md 与 docs/interface.md 拼接而成；为避免 JSON 递归，此处不重复展开正文。>",
@@ -680,20 +680,20 @@
             "type": "string",
             "mapping": "resolution",
             "values": [
-              "480p竖",
-              "480p横",
-              "768p竖",
-              "768p横",
-              "1088p竖",
-              "1088p横",
-              "1440p竖",
-              "1440p横"
+              "480p竖(480*864)",
+              "480p横(864*480)",
+              "768p竖(768*1376)",
+              "768p横(1376*768)",
+              "1088p竖(1088*1920)",
+              "1088p横(1920*1088)",
+              "1440p竖(1440*2560)",
+              "1440p横(2560*1440)"
             ]
           }
         ],
         "defaults": {
           "duration": 5,
-          "resolution": "768p竖"
+          "resolution": "768p竖(768*1376)"
         }
       },
       {

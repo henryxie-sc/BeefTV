@@ -6,6 +6,18 @@ import { DEFAULT_VIDEO_PROMPT_MAX_CHARS, defaultModelCapabilityConfig, modelCapa
 import { modelCompatibilityError } from "../src/lib/model-selection.ts";
 import type { AiConfig } from "../src/stores/use-config-store.ts";
 
+test("AutoDL Z0902 capability sent to the backend has a supported default operation", () => {
+    const model = "minimax_h3_z0902";
+    const generic = defaultModelCapabilityConfig(undefined, "generic");
+    const config = { channels: [{ id: "autodl", models: [model], interfaceType: "autodl-comfyui",
+        modelProfiles: [{ model, capabilityConfig: generic }] }] } as AiConfig;
+    for (const video of [defaultModelCapabilityConfig("autodl-comfyui", model).video!, modelCapabilityConfigFor(config, `autodl::${model}`).video!]) {
+        assert.ok(video.operations.includes(video.defaultOperation));
+        assert.equal(video.defaultOperation, "image_to_video");
+        assert.equal(video.references.minImages, 1);
+    }
+});
+
 test("AutoDL ZM accepts three reference images with a persisted generic profile, but rejects unsupported media", () => {
     const model = "autodl::minimax_h3_zm_u24";
     const generic = defaultModelCapabilityConfig(undefined, "test-model");
