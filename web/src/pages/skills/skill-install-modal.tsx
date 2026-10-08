@@ -1,4 +1,4 @@
-import { App, Button, Form, Input, Modal, Upload, type UploadFile } from "antd";
+import { Button, Form, Input, Modal, Upload, type UploadFile } from "antd";
 import { Select } from "@/components/ui/base/select";
 import { Switch } from "@/components/ui/base/switch";
 import { SegmentedControl } from "@/components/ui/base/segmented-control";
@@ -29,11 +29,11 @@ const modeOptions = [
 ];
 
 export function SkillInstallModal({ open, onClose, onInstalled, onManualCreate }: { open: boolean; onClose: () => void; onInstalled: (skill: Skill) => void; onManualCreate?: () => void }) {
-    const { message } = App.useApp();
     const [form] = Form.useForm<InstallFormValues>();
     const [mode, setMode] = useState<InstallMode>("markdown");
     const [fileList, setFileList] = useState<UploadFile[]>([]);
     const [installing, setInstalling] = useState(false);
+    const [installError, setInstallError] = useState("");
     const localRuntime = isLocalRuntimeMode();
     const availableModeOptions = localRuntime ? modeOptions.filter((option) => option.value !== "github") : modeOptions;
 
@@ -41,18 +41,21 @@ export function SkillInstallModal({ open, onClose, onInstalled, onManualCreate }
         if (!open) return;
         setMode("markdown");
         setFileList([]);
+        setInstallError("");
         form.setFieldsValue({ tag: "creative", is_public: !localRuntime, autoUpdate: true, name: "", description: "", url: "", ref: "", subdir: "" });
     }, [form, open, localRuntime]);
 
     const install = async () => {
-        const values = await form.validateFields();
-        const file = fileList[0]?.originFileObj;
-        if (mode !== "github" && !file) {
-            message.warning(`请选择一个 ${mode === "zip" ? "ZIP 技能包" : "Markdown 文件"}`);
-            return;
-        }
+        if (installing) return;
+        setInstallError("");
         setInstalling(true);
         try {
+            const values = await form.validateFields();
+            const file = fileList[0]?.originFileObj;
+            if (mode !== "github" && !file) {
+                setInstallError(`请选择一个 ${mode === "zip" ? "ZIP 技能包" : "Markdown 文件"}`);
+                return;
+            }
             const result = mode === "github"
                 ? await installGitHubSkill({
                     url: values.url || "",
@@ -70,10 +73,9 @@ export function SkillInstallModal({ open, onClose, onInstalled, onManualCreate }
                     tag: values.tag,
                     isPrivate: localRuntime || !values.is_public,
                 });
-            message.success("技能已安装");
             onInstalled(result.skill);
         } catch (error) {
-            message.error(error instanceof Error ? error.message : "技能安装失败");
+            setInstallError(error instanceof Error ? error.message : "请检查安装信息后重试");
         } finally {
             setInstalling(false);
         }
@@ -86,19 +88,22 @@ export function SkillInstallModal({ open, onClose, onInstalled, onManualCreate }
             width={680}
             destroyOnHidden
             mask={{ closable: !installing }}
+            closable={!installing}
+            keyboard={!installing}
             title="安装技能"
             onCancel={onClose}
             footer={(
                 <div className="flex items-center justify-between gap-3">
-                    {onManualCreate ? <Button type="text" onClick={onManualCreate}>从空白创建单文件技能</Button> : <span />}
-                    <div className="flex gap-2"><Button onClick={onClose}>取消</Button><Button type="primary" loading={installing} onClick={() => void install()}>安装技能</Button></div>
+                    {onManualCreate ? <Button type="text" disabled={installing} onClick={onManualCreate}>从空白创建单文件技能</Button> : <span />}
+                    <div className="flex gap-2"><Button disabled={installing} onClick={onClose}>取消</Button><Button type="primary" loading={installing} onClick={() => void install()}>安装技能</Button></div>
                 </div>
             )}
         >
             <p className="mb-4 text-sm leading-6 text-foreground/55">支持标准 <code>SKILL.md</code> 或包含多层目录的 ZIP 技能包。名称和简介会优先从技能入口自动读取。</p>
-            <SegmentedControl className="skill-install-mode" block options={availableModeOptions} value={mode} onChange={(value) => { setMode(value as InstallMode); setFileList([]); }} />
+            {installError ? <p role="alert" className="mb-4 text-sm break-words" style={{ color: "var(--color-status-error)" }}>{installError}</p> : null}
+            <SegmentedControl className="skill-install-mode" block disabled={installing} options={availableModeOptions} value={mode} onChange={(value) => { setMode(value as InstallMode); setFileList([]); setInstallError(""); }} />
 
-            <Form form={form} layout="vertical" requiredMark="optional" className="skill-install-form">
+            <Form form={form} layout="vertical" disabled={installing} requiredMark="optional" className="skill-install-form" onValuesChange={() => setInstallError("")}>
                 {mode === "github" ? (
                     <>
                         <Form.Item name="url" label="GitHub 地址" rules={[{ required: true, message: "请填写 GitHub 仓库地址" }, { type: "url", message: "请输入有效链接" }]}>
@@ -112,18 +117,19 @@ export function SkillInstallModal({ open, onClose, onInstalled, onManualCreate }
                 ) : (
                     <>
                         <Upload.Dragger
+                            disabled={installing}
                             accept={mode === "zip" ? ".zip,application/zip" : ".md,.markdown,text/markdown"}
                             maxCount={1}
                             fileList={fileList}
                             beforeUpload={(file) => {
                                 if (file.size > 20 * 1024 * 1024) {
-                                    message.error("技能文件不能超过 20MB");
+                                    setInstallError("技能文件不能超过 20MB");
                                     return Upload.LIST_IGNORE;
                                 }
                                 return false;
                             }}
-                            onChange={({ fileList: next }) => setFileList(next.slice(-1))}
-                            onRemove={() => { setFileList([]); return true; }}
+                            onChange={({ fileList: next }) => { setFileList(next.slice(-1)); setInstallError(""); }}
+                            onRemove={() => { setFileList([]); setInstallError(""); return true; }}
                         >
                             <UploadCloud className="mx-auto mb-3 size-8 text-foreground/38" />
                             <div className="text-sm font-medium">拖入或选择 {mode === "zip" ? "ZIP 技能包" : "Markdown 文件"}</div>

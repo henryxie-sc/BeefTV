@@ -48,6 +48,8 @@ APIMart 的图片渠道沿用 `openai-image` 配置。仅当 HTTPS 上游主机�
 | `/ops/clients*`, `/assistant/*` | 外部客户端登记、内置创作助手（同源代理）与宿主生命周期 |
 | `/health/*`, `/system/version` | 启动、就绪与版本诊断 |
 
+`POST /skills/install` 使用 multipart 上传 Markdown 或 ZIP 技能包。自动提取的名称、简介和版本标签分别限制为 80、500 和 64 个 Unicode 字符；超长元数据只截取摘要，不修改包内原始 `SKILL.md` 和辅助文件。用户明确填写的覆盖名称、简介仍需通过长度校验。
+
 `POST /timeline/render-plan` 接收时间线快照、不透明源标识和输出选项，返回版本化语义计划。源标识是 nodeId 或 resource id，不是本地路径。请求不得携带 ffmpeg 参数。该接口不做生成、不写资源、不创建任务。
 
 `POST /timeline/renders` 接收同一套时间线快照和输出选项（宽高、帧率、采样率、是否烧录字幕），创建本机 ffmpeg 成片任务。选项进入任务输入并在执行时编译进语义计划。

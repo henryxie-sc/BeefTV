@@ -827,12 +827,21 @@ func parseSkillPackageMetadata(data []byte) skillPackageMetadata {
 			}
 			paragraph = append(paragraph, trimmed)
 		}
-		metadata.Description = kernel.TruncateRunes(strings.Join(paragraph, " "), 500)
+		metadata.Description = strings.Join(paragraph, " ")
 	}
-	metadata.Name = kernel.TruncateRunes(strings.TrimSpace(metadata.Name), 80)
-	metadata.Description = kernel.TruncateRunes(strings.TrimSpace(metadata.Description), 500)
-	metadata.Version = kernel.TruncateRunes(strings.TrimSpace(metadata.Version), 64)
+	metadata.Name = truncateSkillMetadata(metadata.Name, 80)
+	metadata.Description = truncateSkillMetadata(metadata.Description, 500)
+	metadata.Version = truncateSkillMetadata(metadata.Version, 64)
 	return metadata
+}
+
+// Metadata limits include every character; display truncation suffixes would exceed them.
+func truncateSkillMetadata(value string, limit int) string {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) > limit {
+		runes = runes[:limit]
+	}
+	return string(runes)
 }
 
 func yamlScalar(value string) string {

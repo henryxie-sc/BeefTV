@@ -3,7 +3,9 @@ package skills
 import (
 	"archive/zip"
 	"bytes"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"infinite-canvas/backend/internal/kernel"
 	"infinite-canvas/backend/internal/model"
@@ -23,6 +25,40 @@ func TestArchiveFromMarkdownInfersMetadata(t *testing.T) {
 	}
 	if string(archive.Files["SKILL.md"]) == "" || archive.ContentHash == "" {
 		t.Fatal("archive did not preserve the entry file or compute a hash")
+	}
+}
+
+func TestSkillArchiveMetadataFitsStorageLimits(t *testing.T) {
+	for _, tc := range []struct {
+		name, entry, wantName, wantDescription, wantVersion string
+	}{
+		{"long-frontmatter", "---\nname: " + strings.Repeat("名", 81) + "\ndescription: " + strings.Repeat("描", 501) + "\nmetadata:\n  version: " + strings.Repeat("版", 65) + "\n---\n# Full entry\n", strings.Repeat("名", 80), strings.Repeat("描", 500), strings.Repeat("版", 64)},
+		{"long-body", "# " + strings.Repeat("名", 81) + "\n\n" + strings.Repeat("描", 501), strings.Repeat("名", 80), strings.Repeat("描", 500), ""},
+		{"exact-limits", "---\nname: " + strings.Repeat("名", 80) + "\ndescription: " + strings.Repeat("描", 500) + "\nmetadata:\n  version: " + strings.Repeat("版", 64) + "\n---\n", strings.Repeat("名", 80), strings.Repeat("描", 500), strings.Repeat("版", 64)},
+	} {
+		for _, source := range []string{"markdown", "zip"} {
+			t.Run(tc.name+"/"+source, func(t *testing.T) {
+				var archive skillPackageArchive
+				var err error
+				if source == "markdown" {
+					archive, err = archiveFromMarkdown([]byte(tc.entry), "", "")
+				} else {
+					archive, err = archiveFromZip(skillZip(t, map[string]string{"skill/SKILL.md": tc.entry, "skill/references/example.md": "# Reference"}), "")
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if archive.Metadata.Name != tc.wantName || archive.Metadata.Description != tc.wantDescription || archive.Metadata.Version != tc.wantVersion {
+					t.Fatalf("metadata lengths = %d/%d/%d", utf8.RuneCountInString(archive.Metadata.Name), utf8.RuneCountInString(archive.Metadata.Description), utf8.RuneCountInString(archive.Metadata.Version))
+				}
+				if string(archive.Files["SKILL.md"]) != tc.entry {
+					t.Fatal("metadata limits must not truncate the original skill entry")
+				}
+				if source == "zip" && string(archive.Files["references/example.md"]) != "# Reference" {
+					t.Fatal("auxiliary skill files must be preserved")
+				}
+			})
+		}
 	}
 }
 
