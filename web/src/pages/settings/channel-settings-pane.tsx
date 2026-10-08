@@ -7,6 +7,7 @@ import { ChannelHeadersEditor, validateChannelHeaders } from "@/components/chann
 import { WorkspaceState } from "@/components/layout/workspace-state";
 import { PageHeader } from "@/components/layout/workspace-page";
 import { mergeFetchedChannelModelProfiles } from "@/lib/channel-model-catalog";
+import { seedancePortraitModel } from "@/lib/seedance-portrait";
 import { ensureModelProfilesWithUiDefaults } from "@/lib/model-protocols";
 import { fetchChannelModels, type ChannelModelFetchResult } from "@/services/api/image";
 import { channelHasGenerationCredential, channelHasManagedBeefAPICredential, createModelChannel, defaultBaseUrlForApiFormat, filterModelsByCapability, isBuiltinBeefAPIChannel, modelOptionsFromChannels, normalizeConfigSnapshot, useConfigStore, type AiConfig, type ModelChannel } from "@/stores/use-config-store";
@@ -341,7 +342,7 @@ export function ChannelSettingsPane({ onOpenModels, onOpenRunningHub }: ChannelS
                                                 onRetry={() => void runBeefAction(retryBeefConnection, "无法重新连接")}
                                                 onDisconnect={() => void runBeefAction(disconnectBeefAPIConnection, "无法断开连接")}
                                                 onWallet={() => {
-                                                    void openBeefAPIWallet().catch((error) => message.error(error instanceof Error ? error.message : "无法打开企业钱包"));
+                                                    void openBeefAPIWallet().catch((error) => message.error(error instanceof Error ? error.message : "无法管理钱包"));
                                                 }}
                                             />
                                         ) : null}
@@ -524,7 +525,16 @@ export function applyFetchedChannelModelCatalog(channel: ModelChannel, result: C
     if (channel.id === "beefapi") return { ...channel, models: uniqueModels(result.models), modelProfiles: profiles };
     const existing = new Map((channel.modelProfiles || []).map((profile) => [profile.model, profile]));
     // Refresh updates the catalog without silently enabling new models or removing manual ones.
-    return { ...channel, models: channel.models.length ? channel.models : uniqueModels(result.models), modelProfiles: profiles.map((profile) => existing.get(profile.model) || profile).concat((channel.modelProfiles || []).filter((profile) => !profiles.some((item) => item.model === profile.model))) };
+    return {
+        ...channel,
+        models: channel.models.length ? channel.models : uniqueModels(result.models),
+        modelProfiles: profiles.map((profile) => {
+            const previous = existing.get(profile.model);
+            if (!previous) return profile;
+            return seedancePortraitModel(profile.model) ? { ...previous, videoPricing: profile.videoPricing ?? null } : previous;
+        }).concat((channel.modelProfiles || []).filter((profile) => !profiles.some((item) => item.model === profile.model))
+            .map((profile) => seedancePortraitModel(profile.model) ? { ...profile, videoPricing: null } : profile)),
+    };
 }
 
 function WorkflowChannelEntry({ icon, title, description, status, ready, onOpen }: { icon: ReactNode; title: string; description: string; status: string; ready: boolean; onOpen?: () => void }) {
@@ -668,7 +678,7 @@ function BeefAPIConnectionActions({
         return (
             <>
                 <Button className={buttonClass} size="small" onClick={onWallet}>
-                    打开企业钱包
+                    管理钱包
                 </Button>
                 <Button className={buttonClass} size="small" loading={busy} onClick={onDisconnect}>
                     断开连接
@@ -697,7 +707,7 @@ function BeefAPIConnectionActions({
     }
     return (
         <Button className={buttonClass} size="small" type="primary" loading={busy} onClick={onConnect}>
-            连接 BeefAPI
+            连接 BeefTV
         </Button>
     );
 }
@@ -764,7 +774,7 @@ function channelConnectionError(channel: ModelChannel, connection?: BeefAPIConne
     }
     if (isBuiltinBeefAPIChannel(channel)) {
         if (connection?.state === "connected" || channelHasManagedBeefAPICredential(channel)) return "";
-        return "请先连接 BeefAPI";
+        return "请先连接 BeefTV";
     }
     if (!channelHasGenerationCredential(channel)) return "请填写 API Key / Access Key";
     if (requiresSecretKey(channel) && !channel.secretKey?.trim()) return "当前协议需要填写 Secret Key";

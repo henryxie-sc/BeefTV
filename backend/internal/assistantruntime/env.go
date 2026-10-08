@@ -45,6 +45,12 @@ func (h *Host) buildEnv(provider assistant.Provider, pin childPin) []string {
 		set("NO_PROXY", bypass)
 		set("no_proxy", bypass)
 	}
+	config, _ := h.EffectiveConfig()
+	newRuntime := "durable"
+	if config.NewSessionRuntime == "sdk" {
+		newRuntime = "sdk"
+	}
+	set("BEEFTV_AGENT_NEW_SESSION_RUNTIME", newRuntime)
 	if pin.Port > 0 {
 		set("BEEFTV_AGENT_PORT", strconv.Itoa(pin.Port))
 	} else {
