@@ -18,9 +18,52 @@ func validateExtractedLayout(root, platform string) error {
 		return validateDarwinLayout(root)
 	case "windows-amd64":
 		return validateWindowsLayout(root)
+	case "linux-amd64":
+		return validateLinuxLayout(root)
 	default:
 		return ErrUnsupported
 	}
+}
+
+func validateLinuxLayout(root string) error {
+	bundle := filepath.Join(root, linuxBundleName)
+	if err := requireRegularFile(filepath.Join(bundle, "BeefTV"), true); err != nil {
+		return err
+	}
+	if err := requireRegularFile(filepath.Join(bundle, cliDirName, darwinCLIName), true); err != nil {
+		return err
+	}
+	if err := validateAgentHost(filepath.Join(bundle, "agent-host"), "runtime/bin/node", true); err != nil {
+		return err
+	}
+	plugins, err := os.ReadDir(filepath.Join(bundle, pluginDirName))
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, plugin := range plugins {
+		if !plugin.IsDir() && strings.HasSuffix(plugin.Name(), pluginExtension) {
+			if err := requireRegularFile(filepath.Join(bundle, pluginDirName, plugin.Name()), false); err != nil {
+				return err
+			}
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("更新包缺少官方插件")
+	}
+	return walkAllowed(root, func(rel string, entry fs.DirEntry) error {
+		if rel == "." || rel == linuxBundleName || rel == filepath.Join(linuxBundleName, "BeefTV") || rel == filepath.Join(linuxBundleName, "README.md") {
+			return nil
+		}
+		for _, name := range []string{pluginDirName, "agent-host", cliDirName} {
+			prefix := filepath.Join(linuxBundleName, name)
+			if rel == prefix || strings.HasPrefix(rel, prefix+string(filepath.Separator)) {
+				return nil
+			}
+		}
+		return fmt.Errorf("更新包包含额外文件")
+	})
 }
 
 func validateDarwinLayout(root string) error {
@@ -56,6 +99,19 @@ func validateWindowsLayout(root string) error {
 		return err
 	}
 	exe := filepath.Join(root, windowsExeName)
+	// Nest new media in agent-host so old helpers replace it with that sidecar.
+	// Accept the earlier standalone layout too, but require complete resources.
+	for _, media := range []string{filepath.Join(root, "agent-host", "media-runtime"), filepath.Join(root, "media-runtime")} {
+		if _, err := os.Lstat(media); err == nil {
+			for _, name := range []string{"ffmpeg.exe", "LICENSE", "README.txt", "manifest.json"} {
+				if err := requireRegularFile(filepath.Join(media, name), false); err != nil {
+					return fmt.Errorf("更新包视频工具不完整: %w", err)
+				}
+			}
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+	}
 	if err := requireRegularFile(exe, false); err != nil {
 		return fmt.Errorf("更新包缺少 BeefTV.exe")
 	}
@@ -94,6 +150,9 @@ func validateWindowsLayout(root string) error {
 			return nil
 		}
 		if rel == pluginDirName || strings.HasPrefix(rel, pluginDirName+string(filepath.Separator)) {
+			return nil
+		}
+		if rel == "media-runtime" || strings.HasPrefix(rel, "media-runtime"+string(filepath.Separator)) {
 			return nil
 		}
 		if rel == "agent-host" || strings.HasPrefix(rel, "agent-host"+string(filepath.Separator)) {

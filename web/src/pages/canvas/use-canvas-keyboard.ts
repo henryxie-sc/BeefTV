@@ -53,7 +53,7 @@ export function hasCanvasTextSelection(selection: TextSelectionLike | null | und
 }
 
 export function isCanvasTextEditingElement(target: { closest(selector: string): unknown } | null | undefined) {
-    return Boolean(target?.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])"));
+    return isTextEditableTarget(target) || Boolean(target?.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])"));
 }
 
 export function useCanvasKeyboard({
