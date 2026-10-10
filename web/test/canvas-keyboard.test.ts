@@ -6,11 +6,14 @@ test("Canvas editing boundary includes native controls and every editable attrib
     expect(isCanvasTextEditingElement(null)).toBe(false);
     for (const mode of ["input", "textarea", "select", "true", "", "plaintext-only"]) {
         expect(isCanvasTextEditingElement({ closest: (selector) => {
-            expect(selector).toContain("input, textarea, select");
-            expect(selector).toContain("[contenteditable]:not([contenteditable='false'])");
-            return { mode };
+            const nativeControl = ["input", "textarea", "select"].includes(mode);
+            const matches = nativeControl
+                ? selector.includes("input, textarea, select")
+                : selector.includes("[contenteditable]:not([contenteditable='false'])");
+            return matches ? { mode } : null;
         } })).toBe(true);
     }
+    expect(isCanvasTextEditingElement({ closest: (selector) => selector.includes("[role='textbox']") ? {} : null })).toBe(true);
     expect(isCanvasTextEditingElement({ closest: () => null })).toBe(false);
 });
 
