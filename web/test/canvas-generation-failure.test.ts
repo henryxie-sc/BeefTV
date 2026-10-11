@@ -6,6 +6,13 @@ import { resolveMetadataReferences, generationTaskMetadata, resetGenerationTaskM
 import { ApiError } from "../src/services/api/request";
 import { explainGenerationError, formatGenerationDiagnostics } from "../src/lib/generation-error";
 import { CanvasNodeType, type CanvasNodeData } from "../src/types/canvas";
+
+test("historical explicit price rejection allows manual generation but unknown submissions stay blocked", () => {
+    const failure = { taskStage: "submission_unknown", errorDetails: "提交结果尚未确认", taskFailureDiagnostics: { source: "upstream_http" as const, httpStatus: 500, providerCode: "model_price_error" } };
+    expect(canvasGenerationRetryBlocked(failure, { prompt: "draw" })).toBe(false);
+    expect(canvasGenerationRetryBlocked({ ...failure, taskFailureDiagnostics: { ...failure.taskFailureDiagnostics, providerCode: "internal_error" } }, { prompt: "draw" })).toBe(true);
+    expect(canvasGenerationRetryBlocked({ ...failure, taskFailureDiagnostics: undefined }, { prompt: "draw" })).toBe(true);
+});
 import type { GenerationTask } from "../src/services/api/task-center";
 import moderationFixtures from "../../fixtures/moderation-errors.json";
 

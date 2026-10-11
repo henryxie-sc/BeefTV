@@ -26,6 +26,9 @@ func SafeRouteRejection(err error) bool {
 	}
 	var upstream HTTPError
 	if errors.As(err, &upstream) {
+		if upstream.StatusCode == http.StatusInternalServerError && ClassifyHTTP(upstream.StatusCode, upstream.Status, upstream.Body).ProviderCode == "model_price_error" {
+			return true
+		}
 		switch upstream.StatusCode {
 		case http.StatusUnauthorized, http.StatusPaymentRequired, http.StatusForbidden, http.StatusNotFound, http.StatusTooManyRequests:
 			return true

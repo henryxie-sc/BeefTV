@@ -233,7 +233,7 @@ var providerCodeCategories = map[string]FailureCategory{
 	// stay explicitly unknown instead of inheriting a misleading HTTP 400.
 	"violation_fee.grok.csam":              CategoryModerationInput,
 	"count_token_failed":                   CategoryUnknown,
-	"model_price_error":                    CategoryUnknown,
+	"model_price_error":                    CategoryQuotaUpstream,
 	"invalid_api_type":                     CategoryUnknown,
 	"json_marshal_failed":                  CategoryUnknown,
 	"do_request_failed":                    CategorySubmissionUncertain,

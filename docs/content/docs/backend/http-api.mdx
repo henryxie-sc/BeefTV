@@ -23,6 +23,8 @@ APIMart 的图片渠道沿用 `openai-image` 配置。仅当 HTTPS 上游主机�
 
 图像设置为该渠道的 Midjourney 提供专属参数，保存于节点配置 `midjourneyOptions`，提交时映射为 `input.metadata.providerOptions["apimart-midjourney"]`。支持 `version`、`speed`、`style`、`seed`、`negative_prompt`、`stylize`、`chaos`、`weird`、`tile`、`niji`、`iw`、`cw`、`sw`、`cref`、`sref`、`dref`、`dw`、`repeat`、`raw`、`draft`、`hd`、`stop`、`nsfw_check`、`extra`；后端校验类型、数值范围和参考 URL，未知字段拒绝提交。未设置的字段省略，显式设置的零值和 `false` 保留。结构化参数优先于提示词内的原生参数；版本兼容性由上游决定。速度、重复生成和内容预审可能影响费用。
 
+上游 HTTP 500 且结构化错误码为 `model_price_error` 时，按明确的计费配置拒绝处理，不标记为提交结果未知。历史画布节点若保存了同样的上游 HTTP 诊断证据，可再次手动生成；仅有错误文案、其他 HTTP 500 或传输中断不能解除防重复提交保护。此处理不会自动重新提交历史任务。
+
 `POST /assistant/ui-session` 返回仅驻留内存、绑定当前 owner 的 `token` 与 `expiresAt`。界面在到期前 30 秒重新签发凭据，同一身份的并发请求共用签发结果；重置或切换身份后旧响应不能恢复旧凭据。签发仍要求原有本机同源与 owner/桌面引导校验。
 
 `POST /assistant/chat` 的响应头 `X-Beeftv-Turn-Admission` 区分 `rejected`（尚未调用业务轮次入口）、`unknown`（已经尝试开始轮次）与 `admitted`（已创建轮次）。仅明确的 `rejected` 或尚未发送消息的签发失败可按未接纳处理；缺少标记、网络错误或接纳后的断流仍需读取回执与画布确认。凭据续签和 403 失效处理都不会自动重放消息。

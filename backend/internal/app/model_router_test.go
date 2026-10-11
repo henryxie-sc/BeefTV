@@ -18,6 +18,16 @@ func TestPaymentRequiredIsSafeRouteRejection(t *testing.T) {
 	}
 }
 
+func TestModelPriceErrorIsSafeRouteRejection(t *testing.T) {
+	err := providerHTTPError{StatusCode: 500, Body: `{"error":{"code":"model_price_error","message":"model price is not configured"}}`}
+	if !safeRouteRejection(err) {
+		t.Fatal("explicit price rejection must not become submission_unknown")
+	}
+	if safeRouteRejection(providerHTTPError{StatusCode: 500, Body: `{"error":{"code":"internal_error"}}`}) {
+		t.Fatal("unrelated 500 must remain uncertain")
+	}
+}
+
 func TestImageVariantsMatchResolutionAndActualReferences(t *testing.T) {
 	channelModel := model.ChannelModel{}
 	for _, operation := range []string{"text_to_image", "image_to_image"} {

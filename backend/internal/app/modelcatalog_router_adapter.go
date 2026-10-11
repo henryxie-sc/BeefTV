@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"infinite-canvas/backend/internal/generation"
 	"infinite-canvas/backend/internal/model"
 	"infinite-canvas/backend/internal/modelcatalog"
 	"infinite-canvas/backend/internal/repository"
@@ -172,6 +173,9 @@ func routeFailureCode(err error) string {
 }
 
 func safeRouteRejection(err error) bool {
+	if generation.SafeRouteRejection(err) {
+		return true
+	}
 	return modelcatalog.SafeRouteRejection(routeFailureInfo(err))
 }
 

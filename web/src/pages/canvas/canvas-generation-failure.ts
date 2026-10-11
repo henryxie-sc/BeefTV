@@ -54,6 +54,10 @@ export function canvasTaskFailureMetadata(task: GenerationTask, metadata?: Canva
 
 export function canvasGenerationRetryBlocked(metadata: CanvasNodeMetadata | undefined, input?: CanvasGenerationFailureInput) {
     if (metadata?.resourceReloadAvailable) return true;
+    const evidence = metadata?.taskFailureDiagnostics;
+    // Older releases marked an explicit pricing rejection as an uncertain
+    // submission. Only recorded upstream HTTP evidence can release this guard.
+    if (evidence?.source === "upstream_http" && evidence.httpStatus === 500 && evidence.providerCode === "model_price_error") return false;
     const error = { code: metadata?.generationErrorCode || metadata?.taskErrorCode, message: metadata?.errorDetails };
     if (!shouldBlockAutomaticRetry(error, metadata?.taskStage)) return false;
     // Only a resolved submission can prove that moderated input was changed.
