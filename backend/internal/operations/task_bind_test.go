@@ -57,6 +57,63 @@ func TestCanvasTaskBindAppliesReceiptInSameTransaction(t *testing.T) {
 	}
 }
 
+func TestCanvasTaskBindPreservesFourImagesAndReplaysWithoutDuplicates(t *testing.T) {
+	h := newHarness(t)
+	now := time.Now()
+	images := []map[string]any{}
+	for index := 0; index < 4; index++ {
+		id := fmt.Sprintf("res-four-%d", index)
+		if err := h.service.Database().Create(&model.Resource{ID: id, UserID: h.userID, Kind: "image", Status: model.ResourceStatusReady, MimeType: "image/png", Size: 12, Width: 1200, Height: 800, CreatedAt: now, UpdatedAt: now}).Error; err != nil {
+			t.Fatal(err)
+		}
+		images = append(images, map[string]any{"resourceId": id})
+	}
+	encoded, _ := json.Marshal(map[string]any{"images": images})
+	task := model.Task{ID: "task-four", UserID: h.userID, ProjectID: h.canvasID, Type: "canvas_image", Status: model.TaskStatusSucceeded, InputJSON: `{"metadata":{"source":"canvas","nodeId":"node-four"}}`, ResultJSON: string(encoded), CreatedAt: now, UpdatedAt: now, CompletedAt: &now}
+	if err := h.service.Database().Create(&task).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := h.service.DeliverSucceededTask(task); err != nil {
+		t.Fatal(err)
+	}
+	h.addNode(t, "node-four", "image", "四图", map[string]any{"taskId": task.ID, "status": "loading"})
+	first, err := h.bindTask(t, task.ID, "node-four", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(result operations.Result) {
+		t.Helper()
+		payload := result.Result.(map[string]any)
+		doc := payload["canvas"].(map[string]any)
+		nodes := doc["nodes"].([]any)
+		assets := map[string]bool{}
+		matched := 0
+		for _, item := range nodes {
+			node := item.(map[string]any)
+			meta := nodeMeta(node)
+			if meta["taskId"] == task.ID {
+				matched++
+				if meta["status"] != "success" {
+					t.Fatalf("incomplete node: %v", meta)
+				}
+				assets[meta["assetId"].(string)] = true
+			}
+		}
+		if len(assets) != 4 || matched != 4 {
+			t.Fatalf("task nodes=%d distinct assets=%d", matched, len(assets))
+		}
+	}
+	check(first)
+	replayed, err := h.bindTask(t, task.ID, "node-four", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(replayed)
+	if !replayed.Replayed || h.count(t, &model.Asset{}) != 4 {
+		t.Fatal("replay duplicated delivery")
+	}
+}
+
 func TestCanvasTaskBindReplayReturnsCurrentProjection(t *testing.T) {
 	h := newHarness(t)
 	task := h.seedReadyCanvasImageTask(t, "task-bind-replay", "node-replay", "原标题", 1, 1)

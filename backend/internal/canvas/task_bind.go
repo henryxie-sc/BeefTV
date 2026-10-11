@@ -1,8 +1,10 @@
 package canvas
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -15,6 +17,7 @@ const bindRevisionAttempts = 4
 // TaskOutputBind is the generation-field overlay applied to an existing node.
 // Title, position and unrelated metadata stay on the node.
 type TaskOutputBind struct {
+	AdditionalImages []TaskOutputBind
 	// Set only by the transaction-bound composition root after local render ownership validation.
 	AllowEmptyVideo bool `json:"-"`
 	CanvasID        string
@@ -88,6 +91,44 @@ func (s *Service) bindTaskOutputOnce(userID string, patch TaskOutputBind) (TaskO
 	}
 	applyGenerationBindMetadata(metadata, patch)
 	node["metadata"] = metadata
+	// All delivered images share this document CAS and operation receipt. Stable
+	// sibling identities make replay/recovery independent of the UI lifecycle.
+	if patch.MediaType == "image" && patch.OutputIndex == 0 {
+		nodes, _ := doc["nodes"].([]any)
+		position, _ := node["position"].(map[string]any)
+		x, _ := position["x"].(float64)
+		y, _ := position["y"].(float64)
+		width, _ := node["width"].(float64)
+		if width <= 0 {
+			width = 320
+		}
+		for _, image := range patch.AdditionalImages {
+			hash := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%d", patch.TaskID, patch.NodeID, image.OutputIndex)))
+			id := fmt.Sprintf("generated-image-%x", hash[:16])
+			if findCanvasNode(doc, id) != nil {
+				continue
+			}
+			sibling := cloneNode(node)
+			sibling["id"] = id
+			sibling["title"] = fmt.Sprintf("%s · %d", nodeString(node, "title"), image.OutputIndex+1)
+			sibling["position"] = map[string]any{"x": x + float64(image.OutputIndex)*(width+32), "y": y}
+			sibling["width"] = width
+			if image.Width > 0 && image.Height > 0 {
+				sibling["height"] = width * float64(image.Height) / float64(image.Width)
+			}
+			meta := map[string]any{}
+			for _, key := range []string{"prompt", "composerContent", "model", "size", "quality", "midjourneyOptions"} {
+				if value, ok := metadata[key]; ok {
+					meta[key] = value
+				}
+			}
+			applyGenerationBindMetadata(meta, image)
+			meta["taskOutputIndex"] = image.OutputIndex
+			sibling["metadata"] = meta
+			nodes = append(nodes, sibling)
+			doc["nodes"] = nodes
+		}
+	}
 	expected := canvasRevisionValue(doc)
 	if expected <= 0 {
 		expected = 1

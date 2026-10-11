@@ -188,7 +188,15 @@ func (p *bindPorts) OwnedAsset(userID, assetID string) (*model.Asset, error) {
 }
 
 func (p *bindPorts) BindExistingNode(userID string, patch taskbinding.NodePatch) (taskbinding.NodeBindResult, error) {
-	result, err := p.ctx.Domain.BindExistingCanvasNode(userID, canvas.TaskOutputBind{
+	result, err := p.ctx.Domain.BindExistingCanvasNode(userID, canvasOutputPatch(patch))
+	if err != nil {
+		return taskbinding.NodeBindResult{}, err
+	}
+	return taskbinding.NodeBindResult{Revision: result.Revision, Node: result.Node}, nil
+}
+
+func canvasOutputPatch(patch taskbinding.NodePatch) canvas.TaskOutputBind {
+	result := canvas.TaskOutputBind{
 		CanvasID:    patch.CanvasID,
 		NodeID:      patch.NodeID,
 		TaskID:      patch.TaskID,
@@ -205,11 +213,11 @@ func (p *bindPorts) BindExistingNode(userID string, patch taskbinding.NodePatch)
 		Height:      patch.Height,
 		DurationMs:  patch.DurationMs,
 		Storyboard:  patch.Storyboard,
-	})
-	if err != nil {
-		return taskbinding.NodeBindResult{}, err
 	}
-	return taskbinding.NodeBindResult{Revision: result.Revision, Node: result.Node}, nil
+	for _, image := range patch.AdditionalImages {
+		result.AdditionalImages = append(result.AdditionalImages, canvasOutputPatch(image))
+	}
+	return result
 }
 
 func bindEffectKey(params json.RawMessage) string {

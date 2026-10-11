@@ -65,6 +65,25 @@ func Bind(ports Ports, userID string, req Request) (Receipt, error) {
 	if err != nil {
 		return Receipt{}, err
 	}
+	if patch.MediaType == "image" && req.OutputIndex == 0 {
+		outputs, outputErr := ports.GenerationOutputs(task.ID)
+		if outputErr != nil {
+			return Receipt{}, mapPortError(outputErr)
+		}
+		for _, output := range outputs {
+			if output.OutputIndex == 0 || output.MediaType != "image" {
+				continue
+			}
+			next := req
+			next.OutputIndex = output.OutputIndex
+			next.EffectKey = localtask.AttachNodeEffectKey(req.TaskID, req.NodeID, output.OutputIndex)
+			image, imageErr := durablePatch(ports, userID, *task, next)
+			if imageErr != nil {
+				return Receipt{}, imageErr
+			}
+			patch.AdditionalImages = append(patch.AdditionalImages, image)
+		}
+	}
 	var result NodeBindResult
 	for attempt := 0; attempt < maxBindRevisionAttempts; attempt++ {
 		result, err = ports.BindExistingNode(userID, patch)
