@@ -8,6 +8,8 @@ import { canvasThemes } from "@/lib/canvas-theme";
 import { modelCapabilityConfigFor, normalizeImageValue } from "@/lib/model-capabilities";
 import { useActiveTheme } from "@/stores/canvas/use-canvas-theme-store";
 import type { AiConfig } from "@/stores/use-config-store";
+import { resolveModelRequestConfig } from "@/stores/use-config-store";
+import { isAPIMartMidjourney, midjourneyOptions, midjourneyRatio } from "@/lib/apimart-midjourney";
 
 type CanvasImageSettingsPopoverProps = {
     config: AiConfig;
@@ -36,7 +38,12 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
         ...(showCount && profile.maxOutputs > 1 ? [`${normalized.count} 张`] : []),
         ...(profile.transparentBackground.supported && normalized.transparentBackground === "true" ? ["透明"] : []),
     ];
-    const summary = summaryOverride || summaryParts.join(" · ");
+    const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
+    const isMidjourney = isAPIMartMidjourney(requestConfig.model, requestConfig.baseUrl, requestConfig.interfaceType);
+    const mj = isMidjourney ? midjourneyOptions(config.midjourneyOptions) : {};
+    const summary = summaryOverride || (isMidjourney
+        ? [config.size === "auto" ? "1:1" : midjourneyRatio(config.size), mj.version ? `v${mj.version}` : "默认版本", imageQualityLabel(normalized.quality), mj.speed ? String(mj.speed).replace(/^./, (value) => value.toUpperCase()) : "默认速度"].join(" · ")
+        : summaryParts.join(" · "));
     const hasSettings = profile.size.parameter !== "none" || profile.quality.supported || profile.transparentBackground.supported || (showCount && profile.maxOutputs > 1);
     const updateOpen = (nextOpen: boolean) => {
         setOpen(nextOpen);
