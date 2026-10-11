@@ -720,7 +720,8 @@ function ImageContent({ node, theme, isBatchRoot, batchCount, batchPreviewNodes,
 
     return (
         <BatchFrame batchPreviewNodes={batchPreviewNodes} batchCount={isBatchRoot ? batchCount : 0} batchExpanded={batchExpanded} batchOpening={batchOpening} batchRecovering={batchRecovering} theme={theme} onToggleBatch={onToggleBatch}>
-            <div ref={imageContainerRef} className="h-full w-full overflow-hidden rounded-[var(--node-radius)]">
+            <div ref={imageContainerRef} className="relative h-full w-full overflow-hidden rounded-[var(--node-radius)]">
+                {(node.metadata?.imageOutputs?.length ?? 0) > 1 ? <span className="pointer-events-none absolute bottom-2 right-2 z-10 rounded bg-black/70 px-2 py-1 text-xs text-white">{(node.metadata?.referenceImageIndex ?? 0) + 1} / {node.metadata?.imageOutputs?.length} · 双击查看</span> : null}
                 {error ? <div role="status" className="flex size-full flex-col items-center justify-center gap-2 px-3 text-center text-xs" style={{ color: theme.node.muted }}><span>图片加载失败</span><button type="button" data-canvas-no-zoom className="rounded border px-3 py-1" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); retry(); }}>重新加载</button></div> : url ? <img src={url} alt={node.title} loading="lazy" decoding="async" draggable={false} onDragStart={(event) => event.preventDefault()} onError={fail} onLoad={(event) => fitToImage(event.currentTarget)} className={`pointer-events-none block h-full w-full select-none ${node.metadata?.freeResize ? "object-fill" : "object-contain"}`} /> : <div className="grid size-full place-items-center" style={{ color: theme.node.muted }}>{loading ? <LoaderCircle className="size-5 animate-spin" /> : <ImageIcon className="size-5 opacity-45" />}</div>}
             </div>
         </BatchFrame>

@@ -1,10 +1,8 @@
 package canvas
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -91,43 +89,21 @@ func (s *Service) bindTaskOutputOnce(userID string, patch TaskOutputBind) (TaskO
 	}
 	applyGenerationBindMetadata(metadata, patch)
 	node["metadata"] = metadata
-	// All delivered images share this document CAS and operation receipt. Stable
-	// sibling identities make replay/recovery independent of the UI lifecycle.
+	// Keep every output on the source node; its normal media fields identify the
+	// selected reference so downstream consumers continue to use one image.
 	if patch.MediaType == "image" && patch.OutputIndex == 0 {
-		nodes, _ := doc["nodes"].([]any)
-		position, _ := node["position"].(map[string]any)
-		x, _ := position["x"].(float64)
-		y, _ := position["y"].(float64)
-		width, _ := node["width"].(float64)
-		if width <= 0 {
-			width = 320
+		images := make([]map[string]any, 0, 1+len(patch.AdditionalImages))
+		for _, image := range append([]TaskOutputBind{patch}, patch.AdditionalImages...) {
+			images = append(images, map[string]any{
+				"content": image.Content, "storageKey": image.StorageKey,
+				"assetId": image.AssetID, "resourceId": image.ResourceID,
+				"mimeType": image.MimeType, "bytes": image.Bytes,
+				"naturalWidth": image.Width, "naturalHeight": image.Height,
+				"outputIndex": image.OutputIndex,
+			})
 		}
-		for _, image := range patch.AdditionalImages {
-			hash := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%d", patch.TaskID, patch.NodeID, image.OutputIndex)))
-			id := fmt.Sprintf("generated-image-%x", hash[:16])
-			if findCanvasNode(doc, id) != nil {
-				continue
-			}
-			sibling := cloneNode(node)
-			sibling["id"] = id
-			sibling["title"] = fmt.Sprintf("%s · %d", nodeString(node, "title"), image.OutputIndex+1)
-			sibling["position"] = map[string]any{"x": x + float64(image.OutputIndex)*(width+32), "y": y}
-			sibling["width"] = width
-			if image.Width > 0 && image.Height > 0 {
-				sibling["height"] = width * float64(image.Height) / float64(image.Width)
-			}
-			meta := map[string]any{}
-			for _, key := range []string{"prompt", "composerContent", "model", "size", "quality", "midjourneyOptions"} {
-				if value, ok := metadata[key]; ok {
-					meta[key] = value
-				}
-			}
-			applyGenerationBindMetadata(meta, image)
-			meta["taskOutputIndex"] = image.OutputIndex
-			sibling["metadata"] = meta
-			nodes = append(nodes, sibling)
-			doc["nodes"] = nodes
-		}
+		metadata["imageOutputs"] = images
+		metadata["referenceImageIndex"] = 0
 	}
 	expected := canvasRevisionValue(doc)
 	if expected <= 0 {

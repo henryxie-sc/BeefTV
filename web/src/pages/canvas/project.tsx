@@ -1,4 +1,5 @@
 import { localAssetToInsertPayload } from "@/components/canvas/asset-picker-modal";
+import { selectCanvasReferenceImage } from "@/lib/canvas/canvas-image-outputs";
 import { isCanvasNodeGenerating } from "@/lib/canvas/canvas-node-task-state";
 import { CanvasAssistantSidebar } from "./canvas-assistant-sidebar";
 import { highlightAssistantNodes } from "./canvas-assistant-highlight";
@@ -3276,6 +3277,7 @@ function InfiniteCanvasPage() {
                                 },
                                 previewNode,
                                 onClosePreview: () => setPreviewNodeId(null),
+                                onSelectReferenceImage: (nodeId, index) => updateNodeFromContent(nodeId, (node) => selectCanvasReferenceImage(node, index)),
                                 clearConfirmOpen,
                                 onCancelClear: () => setClearConfirmOpen(false),
                                 onConfirmClear: clearCanvas,

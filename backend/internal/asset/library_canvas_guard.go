@@ -19,9 +19,14 @@ func CanvasMediaReferences(raw json.RawMessage) ([]CanvasMediaReference, error) 
 		Nodes []struct {
 			Type     string `json:"type"`
 			Metadata struct {
-				AssetID    string `json:"assetId"`
-				StorageKey string `json:"storageKey"`
-				Content    string `json:"content"`
+				AssetID      string `json:"assetId"`
+				StorageKey   string `json:"storageKey"`
+				Content      string `json:"content"`
+				ImageOutputs []struct {
+					AssetID    string `json:"assetId"`
+					StorageKey string `json:"storageKey"`
+					Content    string `json:"content"`
+				} `json:"imageOutputs"`
 			} `json:"metadata"`
 		} `json:"nodes"`
 		Timeline struct {
@@ -44,6 +49,11 @@ func CanvasMediaReferences(raw json.RawMessage) ([]CanvasMediaReference, error) 
 	for _, node := range payload.Nodes {
 		if !isCanvasMediaKind(node.Type) {
 			continue
+		}
+		for _, image := range node.Metadata.ImageOutputs {
+			if resourceID := firstCanvasResourceID(image.StorageKey, image.Content); resourceID != "" {
+				references = append(references, CanvasMediaReference{AssetID: strings.TrimSpace(image.AssetID), ResourceID: resourceID})
+			}
 		}
 		resourceID := firstCanvasResourceID(node.Metadata.StorageKey, node.Metadata.Content)
 		if resourceID == "" {

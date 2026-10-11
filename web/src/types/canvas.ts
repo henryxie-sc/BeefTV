@@ -183,7 +183,21 @@ export type CanvasSkillSnapshot = {
     tags: string[];
 };
 
+export type CanvasImageOutput = {
+    content: string;
+    storageKey: string;
+    assetId: string;
+    resourceId: string;
+    mimeType: string;
+    bytes: number;
+    naturalWidth: number;
+    naturalHeight: number;
+    outputIndex: number;
+};
+
 export type CanvasNodeMetadata = {
+    imageOutputs?: CanvasImageOutput[];
+    referenceImageIndex?: number;
     /** Media interaction role. `generator` owns generation controls; `result` is an inspect/process object. */
     nodeRole?: CanvasMediaNodeRole;
     /** How a media result entered the canvas. Only meaningful when nodeRole is `result`. */

@@ -81,7 +81,7 @@ func TestCanvasTaskBindPreservesFourImagesAndReplaysWithoutDuplicates(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	check := func(result operations.Result) {
+	check := func(result operations.Result, selected int) {
 		t.Helper()
 		payload := result.Result.(map[string]any)
 		doc := payload["canvas"].(map[string]any)
@@ -96,19 +96,37 @@ func TestCanvasTaskBindPreservesFourImagesAndReplaysWithoutDuplicates(t *testing
 				if meta["status"] != "success" {
 					t.Fatalf("incomplete node: %v", meta)
 				}
-				assets[meta["assetId"].(string)] = true
+				outputs := meta["imageOutputs"].([]any)
+				if len(outputs) != 4 || meta["referenceImageIndex"] != float64(selected) {
+					t.Fatalf("missing image collection: %v", meta)
+				}
+				for _, output := range outputs {
+					image := output.(map[string]any)
+					assets[image["assetId"].(string)] = true
+				}
+				if meta["assetId"] != outputs[selected].(map[string]any)["assetId"] {
+					t.Fatal("selected image does not match the reference")
+				}
 			}
 		}
-		if len(assets) != 4 || matched != 4 {
+		if len(assets) != 4 || matched != 1 {
 			t.Fatalf("task nodes=%d distinct assets=%d", matched, len(assets))
 		}
 	}
-	check(first)
+	check(first, 0)
+	selectedNode := h.node(t, "node-four")
+	selectedMeta := nodeMeta(selectedNode)
+	for key, value := range selectedMeta["imageOutputs"].([]any)[2].(map[string]any) {
+		selectedMeta[key] = value
+	}
+	selectedMeta["referenceImageIndex"] = float64(2)
+	selectedNode["metadata"] = selectedMeta
+	h.replaceNode(t, "node-four", selectedNode)
 	replayed, err := h.bindTask(t, task.ID, "node-four", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	check(replayed)
+	check(replayed, 2)
 	if !replayed.Replayed || h.count(t, &model.Asset{}) != 4 {
 		t.Fatal("replay duplicated delivery")
 	}

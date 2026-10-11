@@ -3,6 +3,7 @@ import { ImagePlus, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { CanvasImagePreview } from "@/components/canvas/canvas-image-preview";
+import { CanvasImageGallery } from "@/components/canvas/canvas-image-gallery";
 import { TaskDetailItem } from "./canvas-project-feedback";
 import { generationTaskShowsProgress, generationTaskStageLabel } from "@/lib/generation-task-display";
 import { canRetrieveVideoResult, formatTaskLog, type GenerationTask, type TaskLog } from "@/services/api/task-center";
@@ -29,12 +30,13 @@ type CanvasProjectStatusDialogsProps = {
     onUseLocalUpscale: () => void;
     previewNode: CanvasNodeData | null;
     onClosePreview: () => void;
+    onSelectReferenceImage?: (nodeId: string, index: number) => void;
     clearConfirmOpen: boolean;
     onCancelClear: () => void;
     onConfirmClear: () => void;
 };
 
-export function CanvasProjectStatusDialogs({ theme, task, taskLogs, taskLoading, taskError, superResolveNode, previewNode, clearConfirmOpen, onCloseTask, onCancelTask, onRetrieveTask, retrievingTaskId, onCloseSuperResolve, onUseLocalUpscale, onClosePreview, onCancelClear, onConfirmClear }: CanvasProjectStatusDialogsProps) {
+export function CanvasProjectStatusDialogs({ theme, task, taskLogs, taskLoading, taskError, superResolveNode, previewNode, clearConfirmOpen, onCloseTask, onCancelTask, onRetrieveTask, retrievingTaskId, onCloseSuperResolve, onUseLocalUpscale, onClosePreview, onSelectReferenceImage, onCancelClear, onConfirmClear }: CanvasProjectStatusDialogsProps) {
     const config = useEffectiveConfig();
     const previewSource = useResolvedPreviewSource(previewNode);
     return (
@@ -115,7 +117,9 @@ export function CanvasProjectStatusDialogs({ theme, task, taskLogs, taskLoading,
                 ) : null}
             </AppModal>
 
-            {previewSource && previewNode?.type === CanvasNodeType.Image ? (
+            {previewNode?.type === CanvasNodeType.Image && (previewNode.metadata?.imageOutputs?.length ?? 0) > 1 ? (
+                <CanvasImageGallery key={previewNode.id} node={previewNode} onClose={onClosePreview} onSelectReference={onSelectReferenceImage} />
+            ) : previewSource && previewNode?.type === CanvasNodeType.Image ? (
                 <CanvasImagePreview
                     src={previewSource}
                     alt={previewNode.title || "图片"}

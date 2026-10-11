@@ -188,6 +188,7 @@ export type CanvasProjectEditorDialogsProps = {
         onUseLocalUpscale: () => void;
         previewNode: CanvasNodeData | null;
         onClosePreview: () => void;
+        onSelectReferenceImage?: (nodeId: string, index: number) => void;
         clearConfirmOpen: boolean;
         onCancelClear: () => void;
         onConfirmClear: () => void;
@@ -346,6 +347,7 @@ export function CanvasProjectEditorDialogs({
                 onUseLocalUpscale={status.onUseLocalUpscale}
                 previewNode={status.previewNode}
                 onClosePreview={status.onClosePreview}
+                onSelectReferenceImage={status.onSelectReferenceImage}
                 clearConfirmOpen={status.clearConfirmOpen}
                 onCancelClear={status.onCancelClear}
                 onConfirmClear={status.onConfirmClear}
