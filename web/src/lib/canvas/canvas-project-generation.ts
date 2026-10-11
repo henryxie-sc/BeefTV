@@ -516,6 +516,7 @@ export function buildGenerationConfig(config: AiConfig, node: CanvasNodeData | u
             audioInstructions: node?.metadata?.audioInstructions ?? config.audioInstructions,
         }),
         count: String(node?.metadata?.count ?? (mode === "image" ? config.canvasImageCount || config.count || defaultConfig.count : config.count || defaultConfig.count)),
+        midjourneyOptions: node?.metadata?.midjourneyOptions ?? config.midjourneyOptions,
     };
     const imageSize = mode === "image" ? requestedConfig.size : undefined;
     // 无 requirements 的调用（重试、媒体工具等）也按当前能力与尺寸路由到组内最低价兼容模型，

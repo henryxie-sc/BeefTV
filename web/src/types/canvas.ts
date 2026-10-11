@@ -258,6 +258,7 @@ export type CanvasNodeMetadata = {
     size?: string;
     quality?: string;
     transparentBackground?: string;
+    midjourneyOptions?: string;
     count?: number;
     textCount?: number;
     seconds?: string;

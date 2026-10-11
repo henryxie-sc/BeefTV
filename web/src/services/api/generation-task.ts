@@ -1,4 +1,5 @@
 import { getMediaBlob } from "@/services/file-storage";
+import { isAPIMartMidjourney, midjourneyOptions, midjourneyRatio } from "@/lib/apimart-midjourney";
 import { resolveReferenceMediaDuration } from "@/lib/reference-media-metadata";
 import { getImageBlob } from "@/services/image-storage";
 import { resourceIdFromStorageKey, resourceStorageKey, uploadResourceFile } from "@/services/api/resources";
@@ -385,6 +386,10 @@ function generationMetadata(config: AiConfig, metadata?: Record<string, unknown>
     const model = modelOptionName(config.model);
     const modelProfile = channel.modelProfiles?.find((item) => item.model === model);
     const protocol = modelProfile?.protocol || channel.interfaceType;
+    if (isAPIMartMidjourney(model, channel.baseUrl, protocol)) {
+        const existing = metadata?.providerOptions as Record<string, unknown> | undefined;
+        return { ...metadata, providerOptions: { ...existing, "apimart-midjourney": midjourneyOptions(config.midjourneyOptions) } };
+    }
     const defaults = modelProfile?.defaultOptions;
     if (!protocol || !defaults || !Object.keys(defaults).length) return metadata;
     const existing = metadata?.providerOptions && typeof metadata.providerOptions === "object" && !Array.isArray(metadata.providerOptions) ? (metadata.providerOptions as Record<string, unknown>) : {};
@@ -476,6 +481,12 @@ export function backendProviderConfig(config: AiConfig, mode: BackendGenerationM
         audioInstructions: config.audioInstructions,
         systemPrompt: config.systemPrompt,
     };
+    if (mode === "image" && isAPIMartMidjourney(requestConfig.model, requestConfig.baseUrl, requestConfig.interfaceType)) {
+        generationOptions.size = midjourneyRatio(config.size === "auto" ? "1:1" : config.size);
+        generationOptions.quality = ["0.25", "0.5", "1", "2"].includes(config.quality) ? config.quality : undefined;
+        generationOptions.transparentBackground = "false";
+        generationOptions.count = "1";
+    }
     if (logicalModelIDForConfig(config)) return generationOptions;
     return {
         channelId: requestConfig.channelId,

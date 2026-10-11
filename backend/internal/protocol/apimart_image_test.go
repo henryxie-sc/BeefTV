@@ -36,6 +36,27 @@ func TestAPIMartMidjourneySubmission(t *testing.T) {
 	}
 }
 
+func TestAPIMartMidjourneyStructuredOptions(t *testing.T) {
+	a := APIMartImageAdapter{}
+	request := GenerationRequest{Model: "midjourney", Prompt: "draw --v 6.1", Quality: "0.5", ProviderOptions: map[string]map[string]any{
+		"apimart-midjourney": {"version": "7", "speed": "fast", "stylize": 0, "seed": 42, "iw": 0.5, "niji": true, "raw": false, "negative_prompt": "blurry", "sref": "https://example.com/style.png"},
+	}}
+	spec, err := a.BuildCreate(context.Background(), RequestContext{Request: request})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := spec.Body.(map[string]any)
+	if body["version"] != "7" || body["speed"] != "fast" || body["stylize"] != 0 || body["raw"] != false || body["quality"] != "0.5" || body["iw"] != 0.5 {
+		t.Fatalf("body=%+v", body)
+	}
+	for key, value := range map[string]any{"speed": "invalid", "chaos": 101, "seed": 1.5, "iw": -1, "raw": "true", "sref": "file:///secret", "n": 2} {
+		request.ProviderOptions["apimart-midjourney"] = map[string]any{key: value}
+		if _, err := a.BuildCreate(context.Background(), RequestContext{Request: request}); err == nil {
+			t.Fatalf("accepted %s=%v", key, value)
+		}
+	}
+}
+
 func TestAPIMartImageAsyncReceiptAndResult(t *testing.T) {
 	a := APIMartImageAdapter{}
 	r, err := a.ParseCreate(context.Background(), []byte(`{"code":200,"data":[{"status":"submitted","task_id":"task-original"}]}`))

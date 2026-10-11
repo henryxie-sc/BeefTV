@@ -663,6 +663,21 @@ export function modelCapabilityConfigFor(
     const profile = channel?.modelProfiles?.find((item) => item.model === modelName && item.capabilityConfig && !Array.isArray(item.capabilityConfig)) || channel?.modelProfiles?.find((item) => item.model === modelName);
     const protocol = profile?.protocol || channel?.interfaceType;
     const fallback = defaultModelCapabilityConfig(protocol, modelName);
+    // APIMart MJ is a fixed provider contract, even if the channel saved a
+    // generic OpenAI image capability profile before the adapter was added.
+    try {
+        const url = new URL(channel?.baseUrl || "");
+        if (modelName.toLowerCase() === "midjourney" && protocol === "openai-image" && url.protocol === "https:" && url.hostname === "api.apimart.ai") {
+            return { ...fallback, image: {
+                ...fallback.image!,
+                references: { ...fallback.image!.references, maskSupported: false },
+                size: { parameter: "aspect_ratio" as const, values: ["1:1", "3:2", "2:3", "4:3", "3:4", "4:5", "5:4", "16:9", "9:16", "21:9"], default: "1:1", allowCustom: true },
+                quality: { supported: true, values: ["auto", "0.25", "0.5", "1", "2"], default: "auto" },
+                transparentBackground: { supported: false, default: false },
+                responseFormat: { supported: false }, outputFormat: { supported: false }, maxOutputs: 1,
+            } };
+        }
+    } catch { /* Invalid channel URLs are validated before submission. */ }
     const alignMaterialPixels = (video: VideoCapabilityConfig | undefined) => {
         let host = "";
         try { host = new URL(channel?.baseUrl || "").hostname.toLowerCase(); } catch { /* no public URL */ }

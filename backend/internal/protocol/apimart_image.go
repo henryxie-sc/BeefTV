@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -91,8 +92,58 @@ func (a APIMartImageAdapter) BuildCreate(_ context.Context, c RequestContext) (R
 				return RequestSpec{}, fmt.Errorf("APIMart Midjourney quality 必须为 0.25、0.5、1 或 2，请使用自动质量或原生 --q 参数")
 			}
 		}
+		if err := applyAPIMartMidjourneyOptions(body, r.ProviderOptions["apimart-midjourney"]); err != nil {
+			return RequestSpec{}, err
+		}
 	}
 	return RequestSpec{Method: http.MethodPost, Path: path, ContentType: "application/json", Body: body, Headers: headers, Auth: ManifestAuth{Type: "bearer", Field: "apiKey"}}, nil
+}
+
+func applyAPIMartMidjourneyOptions(body map[string]any, options map[string]any) error {
+	for key, value := range options {
+		invalid := func() error { return fmt.Errorf("APIMart Midjourney 参数 %s 无效", key) }
+		switch key {
+		case "speed", "version", "style", "negative_prompt", "extra", "cref", "sref", "dref":
+			text, ok := value.(string)
+			if !ok {
+				return invalid()
+			}
+			if text == "" {
+				continue
+			}
+			if key == "speed" && text != "relax" && text != "fast" && text != "turbo" {
+				return invalid()
+			}
+			if key == "cref" || key == "sref" || key == "dref" {
+				u, err := url.Parse(text)
+				if err != nil || u.Scheme != "https" || u.Host == "" {
+					return invalid()
+				}
+			}
+		case "tile", "niji", "raw", "draft", "hd", "nsfw_check":
+			if _, ok := value.(bool); !ok {
+				return invalid()
+			}
+		case "seed", "stylize", "chaos", "weird", "iw", "cw", "sw", "dw", "repeat", "stop":
+			encoded, err := json.Marshal(value)
+			if err != nil {
+				return invalid()
+			}
+			var number float64
+			if err := json.Unmarshal(encoded, &number); err != nil || math.IsNaN(number) || math.IsInf(number, 0) {
+				return invalid()
+			}
+			limits := map[string][2]float64{"seed": {0, 4294967295}, "stylize": {0, 1000}, "chaos": {0, 100}, "weird": {0, 3000}, "iw": {0, 3}, "cw": {0, 100}, "sw": {0, 1000}, "dw": {0, 100}, "repeat": {2, 40}, "stop": {10, 100}}
+			limit := limits[key]
+			if number < limit[0] || number > limit[1] || (key != "iw" && key != "dw" && math.Trunc(number) != number) {
+				return invalid()
+			}
+		default:
+			return fmt.Errorf("APIMart Midjourney 不支持参数 %s", key)
+		}
+		body[key] = value
+	}
+	return nil
 }
 
 func apimartMidjourneyRatio(size string) (string, error) {

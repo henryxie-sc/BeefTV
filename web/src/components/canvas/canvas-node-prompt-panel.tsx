@@ -1090,6 +1090,7 @@ export function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mo
     return {
         ...globalConfig,
         model,
+        midjourneyOptions: node.metadata?.midjourneyOptions ?? globalConfig.midjourneyOptions,
         quality: defaults.quality ?? globalConfig.quality ?? defaultConfig.quality,
         size: defaults.size ?? globalConfig.size ?? defaultConfig.size,
         transparentBackground: defaults.transparentBackground ?? "false",

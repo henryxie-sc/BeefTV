@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"infinite-canvas/backend/internal/generation"
 	"infinite-canvas/backend/internal/kernel"
+	"infinite-canvas/backend/internal/protocol"
 	"strconv"
 	"strings"
 
@@ -328,9 +329,17 @@ func styleAssetSupportsModel(baseModels []string, generationModel string) bool {
 
 func (s *Service) validateResolvedImageCapability(input *canvasGenerationInput) error {
 	fallback := DefaultImageCapabilityConfig(input.Config.InterfaceType, input.Config.Model)
+	midjourney := protocol.IsAPIMartImage(input.Config.BaseURL, input.Config.InterfaceType) && strings.EqualFold(input.Config.Model, "midjourney")
+	if midjourney {
+		fallback.Size = ImageSizeConfig{Parameter: "aspect_ratio", Values: []string{"1:1", "16:9", "9:16", "3:2", "2:3", "4:3", "3:4", "4:5", "5:4", "21:9"}, Default: "1:1", AllowCustom: true}
+		fallback.Quality = ImageQualityConfig{Supported: true, Values: []string{"auto", "0.25", "0.5", "1", "2"}, Default: "auto"}
+		fallback.References.MaskSupported = false
+		fallback.TransparentBackground.Supported = false
+		fallback.MaxOutputs = 1
+	}
 	channelID := strings.TrimSpace(input.Config.ChannelID)
 	if channelID == "" {
-		if input.Config.CapabilityConfig != nil && input.Config.CapabilityConfig.Image != nil {
+		if !midjourney && input.Config.CapabilityConfig != nil && input.Config.CapabilityConfig.Image != nil {
 			input.ImageCapability = input.Config.CapabilityConfig.Image
 		} else {
 			input.ImageCapability = fallback
@@ -345,7 +354,7 @@ func (s *Service) validateResolvedImageCapability(input *canvasGenerationInput) 
 	if err != nil {
 		return errors.New("当前图片模型能力参数无效")
 	}
-	if profile != nil && profile.Image != nil {
+	if !midjourney && profile != nil && profile.Image != nil {
 		input.ImageCapability = profile.Image
 	} else {
 		input.ImageCapability = fallback

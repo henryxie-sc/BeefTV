@@ -1,4 +1,6 @@
 import { ImageSizePicker } from "./image-size-picker";
+import { MidjourneySettings } from "./midjourney-settings";
+import { isAPIMartMidjourney } from "@/lib/apimart-midjourney";
 import { imageResolutionUsesQuality } from "@/lib/image-size-presets";
 import { type ReactNode } from "react";
 import { ConfigProvider } from "antd";
@@ -8,7 +10,7 @@ import { type CanvasTheme } from "@/lib/canvas-theme";
 import { buildImageResolutionOptions, formatImageResolutionSize } from "@/lib/image-resolution-tiers";
 import { modelCapabilityConfigFor, normalizeImageValue, type ImageCapabilityConfig } from "@/lib/model-capabilities";
 import { mergedImageCapabilityConfig } from "@/lib/model-selection";
-import { type AiConfig } from "@/stores/use-config-store";
+import { resolveModelRequestConfig, type AiConfig } from "@/stores/use-config-store";
 
 const qualityOptions = [
     { value: "auto", label: "自动" },
@@ -43,7 +45,7 @@ const aspectOptions: AspectOption[] = [
 
 type ImageSettingsPanelProps = {
     config: AiConfig;
-    onConfigChange: (key: "quality" | "size" | "transparentBackground" | "count", value: string) => void;
+    onConfigChange: (key: "quality" | "size" | "transparentBackground" | "count" | "midjourneyOptions", value: string) => void;
     theme: CanvasTheme;
     showTitle?: boolean;
     showQuality?: boolean;
@@ -64,6 +66,8 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
     const count = Math.max(1, Math.min(effectiveMaxCount, Number(normalized.count)));
     const activeSize = normalized.size;
     const activeQualityOptions = profile.quality.values.map((value) => qualityOptions.find((item) => item.value === value) || { value, label: value });
+    const resolved = resolveModelRequestConfig(config, config.model || config.imageModel);
+    const midjourney = isAPIMartMidjourney(resolved.model, resolved.baseUrl, resolved.interfaceType);
 
     return (
         <ImageSettingsTheme theme={theme}>
@@ -77,6 +81,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 }}
             >
                 {showTitle ? <div className="text-base font-semibold">图像设置</div> : null}
+                {midjourney ? <MidjourneySettings config={config} onChange={onConfigChange} /> : <>
                 {showQuality && profile.quality.supported && !imageResolutionUsesQuality(profile) ? <div className="space-y-2">
                     <SettingTitle color={theme.node.muted}>{isGrokResolutionQuality(profile) ? "分辨率" : "质量"}</SettingTitle>
                     <div className={`grid gap-1.5 ${activeQualityOptions.length <= 2 ? "grid-cols-2" : "grid-cols-4"}`}>
@@ -116,6 +121,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                         </div>
                     </div>
                 ) : null}
+                </>}
             </div>
         </ImageSettingsTheme>
     );

@@ -667,6 +667,7 @@ function buildNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode: Can
     return {
         ...globalConfig,
         taskWorkflowProvider: workflowProvider,
+        midjourneyOptions: node.metadata?.midjourneyOptions ?? globalConfig.midjourneyOptions,
         runningHub,
         model,
         quality: workflowParameter("quality") || normalizedImage?.quality || node.metadata?.quality || globalConfig.quality || defaultConfig.quality,
@@ -744,6 +745,7 @@ function buildModelNodeConfig(globalConfig: AiConfig, node: CanvasNodeData, mode
             audioInstructions: node.metadata?.audioInstructions || globalConfig.audioInstructions,
         }),
         count: generationDefaults.count || String(node.metadata?.count || (mode === "image" ? globalConfig.canvasImageCount || globalConfig.count : globalConfig.count) || defaultConfig.count),
+        midjourneyOptions: node.metadata?.midjourneyOptions ?? globalConfig.midjourneyOptions,
     };
 }
 

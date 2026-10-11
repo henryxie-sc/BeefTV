@@ -423,6 +423,7 @@ export type AiConfig = {
     transparentBackground: string;
     count: string;
     canvasImageCount: string;
+    midjourneyOptions?: string;
 };
 
 export const CONFIG_STORE_KEY = "open_ai_canvas:ai_config_store";
