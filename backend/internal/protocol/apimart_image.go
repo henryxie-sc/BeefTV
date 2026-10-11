@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -65,7 +66,49 @@ func (a APIMartImageAdapter) BuildCreate(_ context.Context, c RequestContext) (R
 	if key, ok := r.Extra["idempotencyKey"].(string); ok && key != "" {
 		headers["Idempotency-Key"] = key
 	}
-	return RequestSpec{Method: http.MethodPost, Path: "/v1/images/generations", ContentType: "application/json", Body: body, Headers: headers, Auth: ManifestAuth{Type: "bearer", Field: "apiKey"}}, nil
+	path := "/v1/images/generations"
+	if strings.EqualFold(strings.TrimSpace(r.Model), "midjourney") {
+		// Midjourney has a separate submission and billing route; its size is --ar,
+		// not an OpenAI pixel size. Native MJ flags remain available in prompt.
+		path = "/v1/midjourney/generations"
+		if _, masked := body["mask_url"]; masked {
+			return RequestSpec{}, fmt.Errorf("APIMart Midjourney Imagine 不支持蒙版编辑")
+		}
+		delete(body, "model")
+		delete(body, "n")
+		delete(body, "resolution")
+		if r.AspectRatio != "" {
+			ratio, err := apimartMidjourneyRatio(r.AspectRatio)
+			if err != nil {
+				return RequestSpec{}, err
+			}
+			body["size"] = ratio
+		}
+		if quality, ok := body["quality"]; ok {
+			switch quality {
+			case "0.25", "0.5", "1", "2":
+			default:
+				return RequestSpec{}, fmt.Errorf("APIMart Midjourney quality 必须为 0.25、0.5、1 或 2，请使用自动质量或原生 --q 参数")
+			}
+		}
+	}
+	return RequestSpec{Method: http.MethodPost, Path: path, ContentType: "application/json", Body: body, Headers: headers, Auth: ManifestAuth{Type: "bearer", Field: "apiKey"}}, nil
+}
+
+func apimartMidjourneyRatio(size string) (string, error) {
+	parts := strings.FieldsFunc(strings.ToLower(strings.TrimSpace(size)), func(r rune) bool { return r == ':' || r == 'x' })
+	if len(parts) == 2 {
+		width, widthErr := strconv.Atoi(strings.TrimSpace(parts[0]))
+		height, heightErr := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if widthErr == nil && heightErr == nil && width > 0 && height > 0 {
+			a, b := width, height
+			for b != 0 {
+				a, b = b, a%b
+			}
+			return fmt.Sprintf("%d:%d", width/a, height/a), nil
+		}
+	}
+	return "", fmt.Errorf("APIMart Midjourney 尺寸必须为有效比例或像素尺寸：%s", size)
 }
 
 func (a APIMartImageAdapter) BuildPoll(_ context.Context, c PollContext) (RequestSpec, error) {

@@ -5,6 +5,37 @@ import (
 	"testing"
 )
 
+func TestAPIMartMidjourneySubmission(t *testing.T) {
+	a := APIMartImageAdapter{}
+	for _, size := range []string{"2880x2880", "1:1"} {
+		spec, err := a.BuildCreate(context.Background(), RequestContext{Request: GenerationRequest{
+			Model: "midjourney", Prompt: "sunset --v 6.1 --fast", AspectRatio: size,
+			Resolution: "2K", Quality: "auto", Images: []MediaReference{{URL: "https://example.com/source.png"}},
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := spec.Body.(map[string]any)
+		if spec.Path != "/v1/midjourney/generations" || body["size"] != "1:1" || body["prompt"] != "sunset --v 6.1 --fast" || len(body["image_urls"].([]string)) != 1 {
+			t.Fatalf("spec=%+v", spec)
+		}
+		for _, key := range []string{"model", "n", "resolution", "quality"} {
+			if _, exists := body[key]; exists {
+				t.Fatalf("unexpected %s: %+v", key, body)
+			}
+		}
+	}
+	for _, request := range []GenerationRequest{
+		{Model: "midjourney", Prompt: "draw", AspectRatio: "0x2880"},
+		{Model: "midjourney", Prompt: "draw", Quality: "high"},
+		{Model: "midjourney", Prompt: "draw", Images: []MediaReference{{URL: "https://example.com/source.png"}, {Role: "mask", DataURL: "data:image/png;base64,YQ=="}}},
+	} {
+		if _, err := a.BuildCreate(context.Background(), RequestContext{Request: request}); err == nil {
+			t.Fatalf("accepted %+v", request)
+		}
+	}
+}
+
 func TestAPIMartImageAsyncReceiptAndResult(t *testing.T) {
 	a := APIMartImageAdapter{}
 	r, err := a.ParseCreate(context.Background(), []byte(`{"code":200,"data":[{"status":"submitted","task_id":"task-original"}]}`))
