@@ -18,6 +18,7 @@ import (
 const helperRequestSchema = 1
 
 type HelperRequest struct {
+	DataDir        string `json:"dataDir,omitempty"`
 	Schema         int    `json:"schema"`
 	ParentPID      int    `json:"parentPid"`
 	Platform       string `json:"platform"`
@@ -89,6 +90,9 @@ func RunHelperRequest(req HelperRequest) error {
 	}
 	var releaseLock func()
 	defer func() {
+		if result.Error != "" && result.Status != "rolled_back" {
+			result.Status = "failed"
+		}
 		// Startup cleanup must see the final record before it can take the lock.
 		writeRecovery()
 		if releaseLock != nil {
@@ -245,6 +249,7 @@ func (e *Engine) prepareAndStartHelper(ctx context.Context, staged *stagedUpdate
 		return err
 	}
 	req := HelperRequest{
+		DataDir:        e.dataDir,
 		Schema:         helperRequestSchema,
 		ParentPID:      parentPID,
 		Platform:       staged.platform,

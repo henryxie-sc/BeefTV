@@ -1,6 +1,6 @@
 import { assertUserScope, captureUserScope, type CapturedUserScope } from "@/lib/user-scope-guard";
 import { rebindInconsistentCanvasAssets, type CanvasAssetRebindResult } from "@/services/canvas-asset-repair";
-import { createLocalCanvasProject, deleteLocalCanvasProjects, openLocalCanvasProject, openLocalCanvasProjectFromBackend, persistCanvasDocument, restoreLocalCanvasProjectFromHistory } from "@/services/local-workspace-repository";
+import { createLocalCanvasProject, deleteLocalCanvasProjects, openLocalCanvasProject, openLocalCanvasProjectFromBackend, persistCanvasDocument, restoreLocalCanvasProjectFromHistory, syncLocalCanvasGeneratedTextNodeToBackend } from "@/services/local-workspace-repository";
 import { flushAssetStorePersistence, useAssetStore, type Asset } from "@/stores/use-asset-store";
 import {
     loadWorkspaceAssetLibraryPage,
@@ -20,6 +20,7 @@ const canvasRefreshListeners = new Set<(project: CanvasProject, previous: Canvas
 const repairingTextTasks = new Set<string>();
 
 async function repairCompletedTextResults(projectId: string) {
+    const expected = captureUserScope();
     const project = openLocalCanvasProject(projectId);
     if (!project) return;
     const candidates = project.nodes.filter((node) => node.type === CanvasNodeType.Text && node.metadata?.taskId
@@ -27,7 +28,6 @@ async function repairCompletedTextResults(projectId: string) {
         && !generationEffectApplied(node.metadata, attachNodeEffectKey(node.metadata.taskId, node.id, 0)));
     if (!candidates.length) return;
     const { applyRecoveredGenerationTaskResultToNodes } = await import("@/lib/canvas/canvas-generation-task-sync");
-    const { persistCanvasGenerationEffect } = await import("@/services/canvas-generation-consumer");
     for (const candidate of candidates) {
         const taskId = candidate.metadata!.taskId!;
         const key = `${projectId}:${taskId}`;
@@ -35,14 +35,19 @@ async function repairCompletedTextResults(projectId: string) {
         repairingTextTasks.add(key);
         try {
             const task = await queryGenerationTask(taskId);
+            assertUserScope(expected);
             if (task.projectId !== projectId || task.status !== "succeeded" || task.type !== "canvas_text") continue;
             const before = openLocalCanvasProject(projectId);
             const node = before?.nodes.find((item) => item.id === candidate.id);
             if (!before || node?.metadata?.taskId !== taskId || generationEffectApplied(node.metadata || {}, attachNodeEffectKey(taskId, candidate.id, 0))) continue;
             const applied = await applyRecoveredGenerationTaskResultToNodes(before.nodes, task, candidate.id);
             if (!applied.updated) continue;
-            const persisted = await persistCanvasGenerationEffect({ projectId, effectKey: applied.effectKey, previousNodes: before.nodes, nodes: applied.nodes });
-            canvasRefreshListeners.forEach((listener) => listener(persisted, before));
+            const completedNode = applied.nodes.find((item) => item.id === candidate.id);
+            if (!completedNode) continue;
+            await syncLocalCanvasGeneratedTextNodeToBackend(projectId, completedNode, applied.effectKey);
+            assertUserScope(expected);
+            const persisted = openLocalCanvasProject(projectId);
+            if (persisted) canvasRefreshListeners.forEach((listener) => listener(persisted, before));
         } catch (error) {
             console.warn("已完成文本任务的画布结果恢复失败", { projectId, taskId, error });
         } finally {

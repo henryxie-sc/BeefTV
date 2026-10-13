@@ -71,6 +71,8 @@ export type AssistantGenerationProposal = {
 export type AgentTurnEnd = {
     type: "turn_end";
     turnId?: string;
+    /** 宿主本回合实际使用的会话；旧 JSONL 会话首次发消息会交接给新的 Durable 会话，界面据此更新。 */
+    sessionId?: string;
     permissionMode?: AssistantPermissionMode;
     reply: string;
     toolCalls: AgentToolCall[];
@@ -141,6 +143,11 @@ let uiSessionGeneration = 0;
  */
 export function agentAssistantFailureText(reason: string | undefined, fallback = "创作助手暂时不可用，请稍后再试") {
     switch (reason) {
+        case "skill_instruction_too_large":
+            return "所选技能正文过大，请减少所选技能或将部分内容移到参考文件后重试。";
+        case "body_too_large":
+        case "http_413":
+            return "本次消息内容过大，请缩短消息或减少附件后重试。";
         case "turn_timeout":
             return "模型响应时间过长，这一轮尚未完成。已完成的改动会保留，可以继续处理。";
         case "turn_interrupted":
@@ -332,6 +339,7 @@ export type AgentLifecycleEvent = {
 };
 
 export type StreamHandlers = {
+    onSession?: (sessionId: string) => void;
     onDelta?: (delta: string) => void;
     onTurnEnd?: (end: AgentTurnEnd) => void;
     onLifecycle?: (event: AgentLifecycleEvent) => void;
@@ -479,6 +487,10 @@ async function readAgentTurnStream(
             payload = JSON.parse(trimmed) as Record<string, unknown>;
         } catch {
             malformedLine = trimmed.slice(0, 200);
+            return;
+        }
+        if (payload.type === "session" && typeof payload.sessionId === "string" && payload.sessionId) {
+            handlers.onSession?.(payload.sessionId);
             return;
         }
         if (payload.type === "text_delta" && typeof payload.delta === "string") {

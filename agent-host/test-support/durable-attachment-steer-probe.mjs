@@ -20,7 +20,7 @@ const ops = createServer(async (req, res) => {
   res.setHeader('content-type', 'application/json');
   const turn = req.url.match(/\/assistant\/runtime\/turns\/([^/]+)(\/complete)?$/);
   if (turn) { if (turn[2]) closed.add(turn[1]); res.end(JSON.stringify({ code: 0, data: { turnId: turn[1], canvasId: 'canvas', open: !closed.has(turn[1]), revision: 1 } })); return; }
-  if (req.url === '/api/ops') { res.end(JSON.stringify({ code: 0, data: { ops: [{ id: 'canvas.node.update', summary: 'update', readOnly: false, params: { type: 'object', properties: { nodeId: { type: 'string' }, expectedRevision: { type: 'integer' }, patch: { type: 'object' } } } }] } })); return; }
+  if (req.url === '/api/ops') { res.end(JSON.stringify({ code: 0, data: { ops: [{ id: 'canvas.node.update', summary: 'update', assistantModes: ['canvas', 'full-access'], replay: 'safe', readOnly: false, params: { type: 'object', properties: { nodeId: { type: 'string' }, expectedRevision: { type: 'integer' }, patch: { type: 'object' } } } }] } })); return; }
   const body = await read(req);
   if(req.url.endsWith('/bind-session')) {assert.match(body.sessionId,/^durable:/);res.end(JSON.stringify({code:0,data:{bound:true}}));return;}
   if (req.url === '/api/ops/media.overview') { res.end(JSON.stringify({ code: 0, data: { result: { source: { version: 'owned-fixture-version' } } } })); return; }
@@ -52,7 +52,6 @@ try {
   base = `http://127.0.0.1:${hostPort}`;
   const env = { ...process.env, BEEFTV_AGENT_DATA_DIR: directory, BEEFTV_AGENT_PORT: String(hostPort), BEEFTV_OPS_URL: `http://127.0.0.1:${opsPort}/api`, BEEFTV_AGENT_HOST_TOKEN: hostToken,
     BEEFTV_AGENT_API_KEY: 'fixture-only', BEEFTV_AGENT_API: 'openai-completions', BEEFTV_AGENT_MODEL: 'fixture', BEEFTV_AGENT_BASE_URL: `http://127.0.0.1:${providerPort}/v1`, BEEFTV_AGENT_TOTAL_REQUEST_BUDGET: '0' };
-  delete env.BEEFTV_AGENT_NEW_SESSION_RUNTIME;
   child = spawn(process.execPath, [path.join(root, 'agent-host/server.mjs')], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout.on('data', chunk => { log += chunk; }); child.stderr.on('data', chunk => { log += chunk; });
   await until(async () => { try { return (await request('/health')).ok; } catch { return false; } });

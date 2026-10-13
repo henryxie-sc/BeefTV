@@ -11,6 +11,7 @@ export const DESKTOP_UPDATE_STATUSES = ["disabled", "idle", "checking", "availab
 export type DesktopUpdateStatus = (typeof DESKTOP_UPDATE_STATUSES)[number];
 
 export type DesktopUpdateState = {
+    installPrepared?: boolean;
     status: DesktopUpdateStatus;
     currentVersion: string;
     latestVersion: string;
@@ -23,6 +24,13 @@ export type DesktopUpdateState = {
 };
 
 export type DesktopRuntimeBinding = {
+	ReferenceStorageSettings?: () => Promise<ReferenceStorageConfig>;
+	SaveReferenceStorage?: (config: ReferenceStorageConfig & { secretAccessKey: string }) => Promise<ReferenceStorageConfig>;
+	UploadReferenceMedia?: (ids: string[]) => Promise<Record<string,string>>;
+	StorageSettings?: () => Promise<DesktopStorageUsage>;
+	ChooseStorageDirectory?: () => Promise<string>;
+	MigrateStorage?: (target: string) => Promise<DesktopStorageUsage>;
+	CleanupPreviousStorage?: () => Promise<DesktopStorageUsage>;
     RuntimeConfig: () => Promise<DesktopRuntimeConfig>;
     SaveOwnedMedia?: (fileName: string, resourceID: string) => Promise<boolean>;
     SaveOwnedArtifact?: (fileName: string, data: string) => Promise<boolean>;
@@ -35,6 +43,9 @@ export type DesktopRuntimeBinding = {
     OpenBeefTVWebsite?: () => Promise<void>;
     OpenBeefTVGitHub?: () => Promise<void>;
 };
+
+export type DesktopStorageUsage = { dataDir: string; usedBytes: number; freeBytes: number; previousDir?: string; previousBytes?: number };
+export type ReferenceStorageConfig = { enabled: boolean; endpoint: string; bucket: string; region: string; accessKeyId: string; publicBaseURL: string; hasSecret: boolean };
 
 declare global {
     interface Window {

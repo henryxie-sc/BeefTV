@@ -166,6 +166,7 @@ export async function runOwnedTimelineRender(input: {
 }
 
 export async function runOwnedTimelineTranscription(input: {
+    model?: string;
     session: LocalExecutorSession;
     resourceId: string;
     projectId?: string;
@@ -182,6 +183,7 @@ export async function runOwnedTimelineTranscription(input: {
             resourceId: input.resourceId,
             projectId: input.projectId,
             language: input.language,
+            model: input.model,
             clientOperationId: input.clientOperationId,
         },
         { signal: input.session.controller.signal, expectedScope: input.session.expectedScope },
@@ -203,19 +205,20 @@ export async function runOwnedDepthCapture(input: {
     session: LocalExecutorSession;
     projectId: string;
     resourceId: string;
+    nodeId?: string;
     clientOperationId: string;
-    onCreated?: (task: GenerationTask) => void;
+    onCreated?: (task: GenerationTask) => void | Promise<void>;
     onTaskUpdate?: (task: GenerationTask) => void;
     timeoutMs?: number;
     intervalMs?: number;
 }): Promise<{ task: GenerationTask; resource: RemoteResource; capture: DepthCaptureResult }> {
     assertLocalExecutorSession(input.session);
     const created = await createDepthCaptureTask(
-        { projectId: input.projectId, resourceId: input.resourceId, clientOperationId: input.clientOperationId },
+        { projectId: input.projectId, nodeId: input.nodeId, resourceId: input.resourceId, clientOperationId: input.clientOperationId },
         { signal: input.session.controller.signal, expectedScope: input.session.expectedScope },
     );
     assertLocalExecutorSession(input.session);
-    input.onCreated?.(created);
+    await input.onCreated?.(created);
     const task = await observeLocalExecutorTask(created.id, input.session, {
         initialTask: created,
         timeoutMs: input.timeoutMs,
