@@ -51,12 +51,10 @@ test("image submission waits for the target node save and shares one submission 
     const events: string[] = [];
     let release!: () => void;
     const pending = new Promise<void>((resolve) => { release = resolve; });
-    let onSaveStarted!: () => void;
-    const saveStarted = new Promise<void>((resolve) => { onSaveStarted = resolve; });
     const dependencies = {
         prepareTarget: async (options: Parameters<typeof persistCanvasGenerationTarget>[0]) => persistCanvasGenerationTarget(options, async (_id, patch) => {
             expect(patch.nodes?.map((node) => node.id)).toEqual([input.nodeId]);
-            events.push("save"); onSaveStarted(); await pending; events.push("saved");
+            events.push("save"); await pending; events.push("saved");
         }),
         bindTask: () => undefined,
         consumeTask: async () => { events.push("consume"); },
@@ -66,29 +64,21 @@ test("image submission waits for the target node save and shares one submission 
     };
     const first = runCanvasGenerationTaskToConsumer(input, dependencies);
     const second = runCanvasGenerationTaskToConsumer(input, dependencies);
-    await saveStarted;
     expect(events).toEqual(["save"]);
     release(); await Promise.all([first, second]);
     expect(events).toEqual(["save", "saved", "submit", "consume"]);
 });
 
-test("video regeneration saves its target before submit and consumes the new result", async () => {
+test("video regeneration keeps its existing submission path without the added document-save barrier", async () => {
     const events: string[] = [];
     const videoTask = { ...task, id: "new-video-task", type: "canvas_video" };
     await runCanvasGenerationTaskToConsumer({ ...input, mode: "video", clientOperationId: "video-save-barrier" }, {
-        prepareTarget: async () => { events.push("saved"); },
+        prepareTarget: async () => { throw new Error("video save barrier must not run"); },
         runTask: async (options) => { events.push("submitted"); options.onTaskCreated?.(videoTask); return { video: {} as never }; },
         bindTask: (created) => { expect(created.id).toBe(videoTask.id); events.push("bound"); },
         consumeTask: async (completed) => { expect(completed.id).toBe(videoTask.id); events.push("consumed"); },
     });
-    expect(events).toEqual(["saved", "submitted", "bound", "consumed"]);
-    let submissions = 0;
-    await expect(runCanvasGenerationTaskToConsumer({ ...input, mode: "video", clientOperationId: "video-save-failed" }, {
-        prepareTarget: async () => { throw new CanvasBackendSubmitPausedError(); },
-        runTask: async () => { submissions++; return {}; },
-        bindTask: () => undefined, consumeTask: async () => undefined,
-    })).rejects.toBeInstanceOf(CanvasBackendSubmitPausedError);
-    expect(submissions).toBe(0);
+    expect(events).toEqual(["submitted", "bound", "consumed"]);
 });
 
 for (const error of [new ApiError("保存冲突", { status: 409, reason: "conflict" }), new CanvasBackendSubmitPausedError(), new Error("disk failure")]) {

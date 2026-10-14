@@ -139,7 +139,7 @@ export async function runCanvasGenerationTaskToConsumer(
 ) {
     return runGenerationOperationOnce(input.clientOperationId, async () => {
         const expectedScope = input.expectedScope ?? captureUserScope();
-        if (input.mode === "image" || input.mode === "video") {
+        if (input.mode === "image") {
             const prepare = dependencies.prepareTarget ?? (await import("@/services/canvas-generation-target")).persistCanvasGenerationTarget;
             await prepare({ ...input, expectedScope });
         }
