@@ -36,7 +36,11 @@ export function isKeptGenerationResultCode(code: string | undefined) {
 
 export function canvasGenerationFailureMetadata(error: unknown, input: CanvasGenerationFailureInput) {
     const failure = generationFailureMetadata(error, input.prompt, submittedReferences(input));
-    if (error instanceof CanvasGenerationTargetSaveError) return { ...failure, errorDetails: error.message, generationErrorSummary: error.message };
+    if (error instanceof CanvasGenerationTargetSaveError) {
+        const detail = error.cause ? explainGenerationError(error.cause).summary : "";
+        const message = detail ? `${error.message}\n保存失败原因：${detail}` : error.message;
+        return { ...failure, errorDetails: message, generationErrorSummary: message };
+    }
     return { ...failure, ...(isKeptGenerationResultCode(failure.generationErrorCode) ? { resourceReloadAvailable: true } : {}) };
 }
 

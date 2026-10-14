@@ -4,7 +4,7 @@ import { captureUserScope, UserScopeAbandonedError } from "@/lib/user-scope-guar
 import { canvasGenerationFailureMetadata, canvasGenerationRetryBlocked, canvasGenerationTaskNodes, canvasTaskFailureMetadata } from "@/pages/canvas/canvas-generation-failure";
 import { isCanvasNodeGenerating } from "@/lib/canvas/canvas-node-task-state";
 import { ApiError } from "@/services/api/request";
-import { CanvasGenerationDurableAckError, persistCanvasGenerationTarget } from "@/services/canvas-generation-consumer";
+import { CanvasGenerationDurableAckError, CanvasGenerationTargetSaveError, persistCanvasGenerationTarget } from "@/services/canvas-generation-consumer";
 import { CanvasBackendSubmitPausedError } from "@/services/canvas-revision-conflict";
 import type { GenerationTask } from "@/services/api/task-center";
 import { useCanvasStore, type CanvasProject } from "@/stores/canvas/use-canvas-store";
@@ -17,6 +17,14 @@ const input = { projectId: project.id, nodeId: "new-image", mode: "image" as con
 const task: GenerationTask = { id: "task-original", type: "canvas_image", status: "succeeded", prompt: input.prompt, attempts: 1, createdAt: "2026-01-01", updatedAt: "2026-01-01", failureDiagnostics: { source: "unknown", requests: [{ operation: "image_generate", method: "POST", dispatched: true, outcome: "response_received", httpStatus: 200, startedAt: "2026-01-01", durationMs: 10 }] } };
 
 beforeEach(() => useCanvasStore.setState({ projects: [structuredClone(project)] }));
+
+test("preflight save diagnostics retain the safe underlying reason without implying a paid result exists", () => {
+    const error = new CanvasGenerationTargetSaveError(new ApiError("画布有未处理的外部改动，本次未提交", { status: 409, reason: "stale_revision" }));
+    const failure = canvasGenerationFailureMetadata(error, { mode: "video", prompt: "修改后的提示词" });
+    expect(failure.errorDetails).toContain("未开始生成");
+    expect(failure.errorDetails).toContain("保存失败原因：画布有未处理的外部改动");
+    expect(failure.resourceReloadAvailable).toBeUndefined();
+});
 
 test("restoring a completed image retains recovery flags and cannot open a second paid generation", () => {
     const target = { ...project.nodes[0], metadata: { taskId: task.id, taskStatus: "succeeded" as const, status: "error" as const, resourceReloadAvailable: true, generationErrorCode: "canvas_conflict" as const, errorDetails: "生成结果已保留，请点击「继续取回」" } };
