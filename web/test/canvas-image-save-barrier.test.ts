@@ -51,10 +51,12 @@ test("image submission waits for the target node save and shares one submission 
     const events: string[] = [];
     let release!: () => void;
     const pending = new Promise<void>((resolve) => { release = resolve; });
+    let onSaveStarted!: () => void;
+    const saveStarted = new Promise<void>((resolve) => { onSaveStarted = resolve; });
     const dependencies = {
         prepareTarget: async (options: Parameters<typeof persistCanvasGenerationTarget>[0]) => persistCanvasGenerationTarget(options, async (_id, patch) => {
             expect(patch.nodes?.map((node) => node.id)).toEqual([input.nodeId]);
-            events.push("save"); await pending; events.push("saved");
+            events.push("save"); onSaveStarted(); await pending; events.push("saved");
         }),
         bindTask: () => undefined,
         consumeTask: async () => { events.push("consume"); },
@@ -64,6 +66,7 @@ test("image submission waits for the target node save and shares one submission 
     };
     const first = runCanvasGenerationTaskToConsumer(input, dependencies);
     const second = runCanvasGenerationTaskToConsumer(input, dependencies);
+    await saveStarted;
     expect(events).toEqual(["save"]);
     release(); await Promise.all([first, second]);
     expect(events).toEqual(["save", "saved", "submit", "consume"]);

@@ -3,6 +3,7 @@ import { CanvasStaleScopeError } from "@/services/canvas-revision-conflict";
 import { persistCanvasDocument } from "@/services/local-workspace-repository";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { CanvasGenerationTargetSaveError } from "./canvas-generation-errors";
+import { ensureCanvasMediaAssetBindings } from "./canvas-media-asset-bindings";
 
 export async function persistCanvasGenerationTarget(input: {
     projectId: string;
@@ -18,7 +19,11 @@ export async function persistCanvasGenerationTarget(input: {
     const project = useCanvasStore.getState().openProject(input.projectId);
     if (!project?.nodes.some((node) => node.id === input.nodeId)) throw new CanvasGenerationTargetSaveError(undefined, "生成节点已不存在，未开始生成");
     try {
-        await persist(input.projectId, { nodes: project.nodes, connections: project.connections }, input.expectedScope);
+        await ensureCanvasMediaAssetBindings(input);
+        assertCurrent();
+        const latest = useCanvasStore.getState().openProject(input.projectId);
+        if (!latest?.nodes.some((node) => node.id === input.nodeId)) throw new CanvasGenerationTargetSaveError(undefined, "生成节点已不存在，未开始生成");
+        await persist(input.projectId, { nodes: latest.nodes, connections: latest.connections }, input.expectedScope);
     } catch (error) {
         if (isUserScopeAbandonedError(error) || error instanceof CanvasStaleScopeError || (error instanceof Error && error.name === "AbortError")) throw error;
         throw new CanvasGenerationTargetSaveError(error);
