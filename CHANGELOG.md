@@ -9,6 +9,30 @@ All notable public changes to BeefTV are documented in this file.
 - Added reproducible local builds, automated quality checks, and multi-architecture container publishing.
 - Standardized public artifacts, runtime identifiers, documentation, and repository links on the BeefTV name.
 
+## v1.7.21
+
+- 视频生成完成后优先下载上游结果，减少取回等待；下载失败时自动取回同一视频的备用文件，不重新生成。
+- 下载中断或长时间没有进展时及时切换备用地址；取消取回会停止当前下载。
+
+## v1.7.20
+
+- 新增 MiniMax H3 和 H3 Max，与 H3 Max Turbo 一起提供人民币报价。
+- H3 支持 2K/4K、首尾帧和多图、视频、音频参考；前 5 张参考图免费，超过后显示按张费用。
+- 修正 H3 视频请求的画面比例，关键帧视频沿用图片比例。
+- 深度动作捕捉等待时间与后端保持一致，重启后恢复原任务；已生成的视频可以继续取回。
+
+## v1.7.19
+
+- 下载更新后只解压一次，并显示校验、保存、解压和准备安装的进度。失败时能看到原因，可以重试。
+- 更新前不再把以前导入失败留下的记录当成还没保存。保存失败时可以返回处理、再试一次，或确认后继续更新；继续更新可能丢掉还没保存的修改。
+- Windows 安装时如果目录被占用，会自动重试，并显示中文说明和错误码。安装失败时会尽量恢复原来的程序。
+- 开启「减少动态效果」后，默认模型菜单会留在屏幕内，可以正常打开和选择。
+
+## v1.7.18
+
+- 新增 MiniMax H3 Max Turbo 视频模型，支持 480p、768p、1080p，显示当前人民币秒价。
+- 支持首尾帧、仅尾帧和指定配音；生成结果沿用画布保存与原任务恢复。
+
 ## v1.7.17
 
 - 修复 macOS 视频播放器点击全屏无反应的问题。

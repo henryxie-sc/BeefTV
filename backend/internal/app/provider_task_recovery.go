@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"infinite-canvas/backend/internal/generation"
 	"strings"
 	"time"
 
@@ -92,7 +93,7 @@ func (s *Service) queryFailedVideoTask(ctx context.Context, task *model.Task, cl
 	}
 	ctx = ensureOfficialProtocolAdapter(ctx, config.InterfaceType)
 	adapter, declarative := declarativeProtocolAdapterForContext(ctx, config.InterfaceType)
-	beefVideo := isBeefAPIVideoConfig(ctx, config) && isSeedanceVideoConfig(config)
+	beefVideo := isBeefAPIVideoConfig(ctx, config) && (isSeedanceVideoConfig(config) || generation.IsBeefAPIH3Model(config.Model))
 	if !declarative && !beefVideo {
 		return nil, BadAuthRequest("该任务的请求协议不支持安全查询上游状态")
 	}
@@ -181,12 +182,10 @@ func queryBeefAPIVideoResult(ctx context.Context, input canvasGenerationInput, i
 	if status != "completed" && status != "succeeded" {
 		return nil, status, nil
 	}
-	data, mimeType, err := runVideoDownload(ctx, id, defaultVideoPollPolicy(), func(ctx context.Context) ([]byte, string, error) {
-		if videoURL != "" {
-			return getProviderExternalBinary(withProviderRequestKind(ctx, "download"), input.Config, videoURL)
-		}
-		return getBinary(withProviderRequestKind(ctx, "download"), input.Config, "/videos/"+id+"/content")
-	})
+	if videoURL == "" {
+		videoURL = generation.APIURL(input.Config.BaseURL, "/videos/"+id+"/content")
+	}
+	data, mimeType, err := generation.DownloadVideoResult(ctx, input.Config, videoURL, id)
 	if err != nil {
 		return nil, status, err
 	}

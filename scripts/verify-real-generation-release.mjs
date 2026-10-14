@@ -1,6 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
+import { validateH3FamilyRelease } from './h3-family-release-contract.mjs';
+import { validateVideoDirectDeliveryRelease } from './video-direct-delivery-release-contract.mjs';
 import {
   REQUIRED_AGENT_CHECK_IDS,
   DETERMINISTIC_FAULT_CHECK_IDS,
@@ -27,6 +29,143 @@ const receipt = JSON.parse(readFileSync(`docs/release-evidence/${version}.json`,
 const fail = message => { throw new Error(`Real generation release gate: ${message}`); };
 const nonempty = value => typeof value === 'string' && value.trim() !== '';
 if (receipt.version !== version || receipt.sourceDigest !== sourceDigest) fail('receipt does not match this release source');
+if (version === 'v1.7.21') {
+  validateVideoDirectDeliveryRelease(receipt, sourceDigest);
+  console.log('v1.7.21 single native video delivery acceptance; one settled generation, current-source review and recovery checks; full matrix and assistant suite NOT run; four-platform package gates pending.');
+  process.exit(0);
+}
+if (version === 'v1.7.20') {
+  validateH3FamilyRelease(receipt, sourceDigest);
+  // Release Actions checks out a shallow squash commit, so the executed branch
+  // commit need not exist locally. Compare its recorded immutable blobs instead.
+  const h3Tree = execFileSync('git', ['ls-tree', '-r', 'HEAD', '--',
+    'backend/internal/generation', 'backend/internal/beefapi', 'backend/internal/modelcatalog',
+    'backend/internal/providerpreset', 'backend/internal/app/provider_task_recovery.go',
+    'web/src/lib/seedance-portrait.ts', 'web/src/services/api/video-provider-newapi.ts'], { encoding: 'utf8' });
+  if (createHash('sha256').update(h3Tree).digest('hex') !== '43bcd27d778ecb6ca338413b971f8b474011751d2c5cb8fd9e2c246bfefcbbe9') fail('H3 execution differs from its real paid acceptance');
+  console.log('v1.7.20 H3 family targeted acceptance; eight shared-budget calls, final candidate replay, full matrix NOT run; four-platform package gates pending.');
+  process.exit(0);
+}
+// v1.7.19 only: package the installer and settings fixes that merged after
+// v1.7.18 was pinned. This does not rerun or waive a future paid matrix.
+if (version === 'v1.7.19') {
+  const evidence = value => Array.isArray(value) && value.length > 0 && value.every(nonempty);
+  const bound = value => value?.sourceDigest === sourceDigest && evidence(value.evidence);
+  if (receipt.ownerException?.scope !== 'late-merged-installer-ui-20261013'
+    || receipt.ownerException.approvedBy !== 'Ender'
+    || receipt.ownerException.instruction !== '继续打包有两项pr晚于这次打包但是合了'
+    || !evidence(receipt.ownerException.evidence)
+    || receipt.releaseAuthorization?.additionalHumanReplyRequired !== false
+    || receipt.releaseAuthorization.scope !== 'v1.7.19 only'
+    || receipt.baseRelease !== 'v1.7.18'
+    || receipt.baseCommit !== '3df73e4da93e30b4fdf394e6ed317ed7d90dcdd0'
+    || JSON.stringify(receipt.includedPullRequests) !== JSON.stringify([136, 137, 135])
+    || receipt.paidSubmissionPathChanged !== false
+    || receipt.liveMatrixStatus !== 'not_run_owner_waived'
+    || receipt.agentAcceptanceStatus !== 'not_run_owner_waived'
+    || receipt.acceptanceComplete !== false) fail('v1.7.19 requires the exact late-package authorization and the three merged pull requests');
+  if (receipt.paidSubmissionLimit !== 0 || receipt.newBudgetCNY !== 0
+    || receipt.newSpentCNY !== 0 || receipt.newPendingCNY !== 0
+    || !Array.isArray(receipt.cases) || receipt.cases.length !== 0
+    || !Array.isArray(receipt.billingAttempts) || receipt.billingAttempts.length !== 0
+    || [receipt.budgetCNY, receipt.spentCNY, receipt.pendingCNY].some(value => value !== null)) fail('v1.7.19 must not add paid generation or zero historical totals');
+  if (receipt.priorFinancialUncertainty?.status !== 'unresolved'
+    || receipt.priorFinancialUncertainty.carriedFromVersion !== 'v1.7.18'
+    || receipt.priorFinancialUncertainty.pendingCNY !== null
+    || !evidence(receipt.priorFinancialUncertainty.evidence)) fail('v1.7.19 must retain v1.7.18 financial uncertainty');
+  if (receipt.review?.result !== 'approved' || receipt.review.independent !== true
+    || !nonempty(receipt.review.reviewer) || !bound(receipt.review)
+    || receipt.upgrade?.preservedData !== true || !bound(receipt.upgrade)) fail('v1.7.19 requires current-source review and data preservation');
+  for (const [id, method] of Object.entries({
+    singleExtractProgress: 'test',
+    reducedMotionModelMenu: 'test',
+    installSaveAndRetry: 'test',
+    noNewPaidGeneration: 'source-diff',
+    localReleaseGate: 'local-script',
+    ci: 'github-actions',
+  })) {
+    const item = receipt.verification?.[id];
+    if (item?.status !== 'passed' || item.method !== method || !bound(item)) fail(`v1.7.19 missing targeted evidence: ${id}`);
+  }
+  const packages = receipt.packages;
+  const platforms = ['darwin-arm64', 'darwin-amd64', 'windows-amd64', 'linux-amd64'];
+  if (!Array.isArray(packages?.platforms) || JSON.stringify([...packages.platforms].sort()) !== JSON.stringify([...platforms].sort())
+    || packages.status !== 'pending_release_workflow' || packages.archives != null
+    || receipt.releasePublished !== false || receipt.releaseComplete !== false
+    || packages.windowsReleasedUpgradeAndRollbackBeforeUpload !== true || packages.finalArchiveSmokeBeforeUpload !== true
+    || packages.linuxNativeWindowBeforeUpload !== true || packages.signedManifestBeforePublish !== true
+    || packages.publicReadbackAfterPublish !== true || !evidence(packages.workflowEvidence)) fail('v1.7.19 must enforce all four final-package gates');
+  console.log('v1.7.19 late installer and settings package; no new paid generation; full matrix NOT run; four-platform package gates pending.');
+  process.exit(0);
+}
+// Exact H3-only authorization. Prior backend canaries and the current native
+// production client have different evidence and must never be relabeled.
+if (version === 'v1.7.18') {
+  const evidence = value => Array.isArray(value) && value.length > 0 && value.every(nonempty);
+  const bound = value => value?.sourceDigest === sourceDigest && evidence(value.evidence);
+  if (receipt.ownerException?.scope !== 'fal-h3-targeted-20261013'
+    || receipt.ownerException.approvedBy !== 'Ender'
+    || receipt.ownerException.instruction !== '本版采用 H3 专项验收（推荐）'
+    || !evidence(receipt.ownerException.evidence)
+    || receipt.releaseAuthorization?.additionalHumanReplyRequired !== false
+    || receipt.releaseAuthorization.scope !== 'v1.7.18 only'
+    || receipt.liveMatrixStatus !== 'not_run_owner_waived'
+    || receipt.agentAcceptanceStatus !== 'not_run_owner_waived'
+    || receipt.acceptanceComplete !== false) fail('v1.7.18 requires exact owner H3-only and cross-review authorization');
+  if (!Array.isArray(receipt.cases) || receipt.cases.length !== 0
+    || !Array.isArray(receipt.billingAttempts) || receipt.billingAttempts.length !== 0
+    || [receipt.budgetCNY, receipt.spentCNY, receipt.pendingCNY, receipt.newSpentCNY, receipt.newPendingCNY].some(value => value !== null)) fail('v1.7.18 must not add a generic paid matrix or zero unresolved financial totals');
+  const priorDigest = '1eca0cde63aaa9d09431465f997c9959d523ca2cda60cb8dcf00e132a6f55f50';
+  const requiredCases = { 'text-768p': '768p', 'first-last-480p': '480p', 'last-only-1080p': '1080p', 'pinned-audio-768p': '768p' };
+  if (receipt.priorH3Canaries?.length !== 4) fail('v1.7.18 requires exactly four recorded backend canaries');
+  const ids = new Set();
+  for (const [id, resolution] of Object.entries(requiredCases)) {
+    const item = receipt.priorH3Canaries.find(item => item.id === id);
+    if (!item || item.method !== 'production-go-test' || item.executedSourceDigest !== priorDigest
+      || item.model !== 'minimax-h3-max-turbo' || item.resolution !== resolution || item.seconds !== 3
+      || item.status !== 'succeeded' || !nonempty(item.providerRequestId) || ids.has(item.providerRequestId)
+      || !/^[a-f0-9]{64}$/.test(item.artifactSHA256 || '') || !evidence(item.evidence)) fail(`v1.7.18 invalid historical H3 case: ${id}`);
+    ids.add(item.providerRequestId);
+  }
+  const funding = receipt.h3Funding;
+  if (funding?.budgetCNY !== 20 || !Number.isFinite(funding.reservedUpperCNY)
+    || funding.reservedUpperCNY < 7.10326 || funding.reservedUpperCNY > 20
+    || funding.supplierInvoiceConfirmed !== false || funding.supplierBillingReadHTTPStatus !== 403
+    || !evidence(funding.evidence) || receipt.paidSubmissionLimit !== 5) fail('v1.7.18 must bound five H3 creates within CNY 20 and preserve supplier invoice uncertainty');
+  const item = receipt.productionH3;
+  if (!bound(item) || item.method !== 'native-cli' || item.clientVersion !== version
+    || item.model !== 'minimax-h3-max-turbo' || item.resolution !== '768p' || item.seconds !== 3
+    || item.status !== 'succeeded' || item.billing !== 'settled' || item.billingMarket !== 'enterprise'
+    || !Number.isFinite(item.costCNY) || Math.abs(item.costCNY - 0.7323912) > 0.000002
+    || item.canvasVerified !== true || item.saved !== true || item.reopened !== true
+    || item.mediaDecoded !== true || item.mediaOpened !== true || item.noDuplicateSubmission !== true
+    || ![item.taskId, item.gatewayTaskId, item.providerRequestId].every(nonempty)
+    || ids.has(item.providerRequestId) || !/^[a-f0-9]{64}$/.test(item.artifactSHA256 || '')) fail('v1.7.18 requires a current native production task, CNY settlement and saved playable canvas');
+  ids.add(item.providerRequestId);
+  if (!Array.isArray(funding.inferenceRequestIds) || funding.inferenceRequestIds.length !== 5
+    || new Set(funding.inferenceRequestIds).size !== 5
+    || funding.inferenceRequestIds.some(id => !ids.has(id))) fail('v1.7.18 must account for exactly the five recorded H3 inference requests');
+  if (receipt.priorFinancialUncertainty?.status !== 'unresolved'
+    || receipt.priorFinancialUncertainty.carriedFromVersion !== 'v1.7.17'
+    || receipt.priorFinancialUncertainty.pendingCNY !== null
+    || !evidence(receipt.priorFinancialUncertainty.evidence)) fail('v1.7.18 must retain historical financial uncertainty');
+  if (receipt.review?.result !== 'approved' || receipt.review.independent !== true
+    || !nonempty(receipt.review.reviewer) || !bound(receipt.review)
+    || receipt.upgrade?.preservedData !== true || !bound(receipt.upgrade)) fail('v1.7.18 requires final-source review and data preservation');
+  for (const id of ['h3Catalog', 'h3KeyframesAudio', 'nativeCanvasDelivery', 'noDuplicateSubmission', 'localReleaseGate', 'ci']) {
+    if (receipt.verification?.[id]?.status !== 'passed' || !bound(receipt.verification[id])) fail(`v1.7.18 missing targeted evidence: ${id}`);
+  }
+  const packages = receipt.packages;
+  const platforms = ['darwin-arm64', 'darwin-amd64', 'windows-amd64', 'linux-amd64'];
+  if (!Array.isArray(packages?.platforms) || JSON.stringify([...packages.platforms].sort()) !== JSON.stringify([...platforms].sort())
+    || packages.status !== 'pending_release_workflow' || packages.archives != null
+    || receipt.releasePublished !== false || receipt.releaseComplete !== false
+    || packages.windowsReleasedUpgradeAndRollbackBeforeUpload !== true || packages.finalArchiveSmokeBeforeUpload !== true
+    || packages.linuxNativeWindowBeforeUpload !== true || packages.signedManifestBeforePublish !== true
+    || packages.publicReadbackAfterPublish !== true || !evidence(packages.workflowEvidence)) fail('v1.7.18 must enforce all four final-package gates');
+  console.log('v1.7.18 H3 targeted acceptance; prior backend canaries recorded separately; native production CNY settlement verified; full matrix NOT run; four-platform package gates pending.');
+  process.exit(0);
+}
 // Ender's October 13 acceptance replaces the paid rerun authorization.
 // Historical native tests remain bound to the builds actually tested.
 if (version === 'v1.7.17') {
