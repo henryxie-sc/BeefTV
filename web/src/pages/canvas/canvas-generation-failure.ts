@@ -3,6 +3,8 @@ import type { CanvasNodeData, CanvasNodeMetadata } from "@/types/canvas";
 import type { GenerationTask } from "@/services/api/task-center";
 import { CanvasGenerationTargetSaveError } from "@/services/canvas-generation-errors";
 import { generationTaskMetadata } from "@/lib/canvas/canvas-project-generation";
+import { generationEffectApplied } from "@/services/generation-consumer-dedupe";
+import { attachNodeEffectKey } from "@/services/generation-task-materializer";
 
 type GenerationReference = { id?: string; storageKey?: string; url?: string; dataUrl?: string };
 export type CanvasGenerationFailureInput = {
@@ -93,7 +95,9 @@ export function canvasGenerationTaskNodes(nodes: CanvasNodeData[], targetNodeId:
         const failed = task.status === "failed" || task.status === "cancelled";
         const output = task.outputs?.find((item) => item.outputIndex === 0) ?? task.outputs?.[0];
         const paused = task.status === "succeeded" && !output?.materializedAssetId && [task.stage, output?.materializationErrorCode].some((code) => code === "delivery_paused" || code === "delivery_timed_out");
-        const hasCompletedContent = task.status === "succeeded" && !paused && (!output || Boolean(output.materializedAssetId)) && Boolean(node.metadata?.content || node.metadata?.storageKey);
+        const hasCompletedContent = task.status === "succeeded" && !paused
+            && generationEffectApplied(node.metadata || {}, attachNodeEffectKey(task.id, node.id, 0))
+            && Boolean(node.metadata?.content || node.metadata?.storageKey);
         const retainRecovery = task.status === "succeeded" && !hasCompletedContent && Boolean(node.metadata?.resourceReloadAvailable || isKeptGenerationResultCode(node.metadata?.generationErrorCode));
         const failure = paused ? { resourceReloadAvailable: true, generationErrorCode: "download_failed", errorDetails: task.stage === "delivery_timed_out" ? "取回结果已超时，可以继续取回" : "已停止取回，可以继续取回" } : failed ? canvasTaskFailureMetadata(task, node.metadata) : undefined;
         return {

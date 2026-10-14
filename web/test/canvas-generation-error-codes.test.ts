@@ -41,9 +41,19 @@ describe("generation result-apply error codes", () => {
         expect(canvasGenerationTaskNodes([original], "n1", pending)[0].metadata?.status).toBe("loading");
         const complete = { ...pending, stage: "delivery_paused", outputs: [{ outputIndex: 0, mediaType: "video" as const, materializedAssetId: "asset-current" }] };
         const [next] = canvasGenerationTaskNodes([original], "n1", complete);
-        expect(next.metadata?.status).toBe("success");
+        expect(next.metadata?.status).toBe("loading");
         expect(next.metadata?.resourceReloadAvailable).toBeUndefined();
-        expect(canvasGenerationTaskNodes([original], "n1", succeededTask)[0].metadata?.status).toBe("success");
+        expect(canvasGenerationTaskNodes([original], "n1", succeededTask)[0].metadata?.status).toBe("loading");
+    });
+    test("regeneration completes only after this task's bind receipt, not old video or an overwritten task ID", () => {
+        const task = { ...succeededTask, type: "canvas_video", outputs: [{ outputIndex: 0, mediaType: "video" as const, materializedAssetId: "asset-new" }] };
+        const original = { ...node({ taskId: task.id, content: "old.mp4", storageKey: "resource:old", status: "loading", generationEffectKeys: ["attach-node:old-task:n1:0"] }), type: CanvasNodeType.Video };
+        const pending = canvasGenerationTaskNodes([original], "n1", task)[0];
+        expect(pending.metadata?.status).toBe("loading");
+        expect(pending.metadata?.content).toBe("old.mp4");
+        expect(pending.metadata?.taskId).toBe(task.id);
+        const bound = { ...pending, metadata: { ...pending.metadata, content: "new.mp4", storageKey: "resource:new", assetId: "asset-new", generationEffectKeys: [`attach-node:${task.id}:n1:0`] } };
+        expect(canvasGenerationTaskNodes([bound], "n1", task)[0].metadata?.status).toBe("success");
     });
     test("durable ack is a canvas conflict only for a revision conflict", () => {
         const conflict = new CanvasGenerationDurableAckError(new ApiError("云端画布已有更新", { status: 409, reason: "stale_revision" }));
